@@ -10,6 +10,9 @@ import {
   deleteTransactionById,
   updateSheetRow,
   findRowIndexById,
+  deleteMultipleRowsByWalletId,
+  deleteWalletById,
+  deleteSheetRow,
 } from "@/lib/google";
 import {
   Transaction,
@@ -111,10 +114,7 @@ export async function deleteCategory(id: string) {
   const rowIndex = await findRowIndexById("Categories", id);
   if (!rowIndex) throw new Error("Category not found");
 
-  // Note: similar to wallets we aren't literally deleting rows to avoid empty row issues for simple apps,
-  // we would normally just clear the row or use sheets batchUpdate to deleteDimension.
-  const row = [id, "DELETED_" + Date.now(), "EXPENSE", "#000000"];
-  await updateSheetRow(`Categories!A${rowIndex}:D${rowIndex}`, row);
+  await deleteSheetRow("Categories", rowIndex);
   revalidatePath("/");
   return { success: true };
 }
@@ -178,6 +178,19 @@ export async function deleteTransaction(id: string, date: string) {
     return { success: true };
   } catch (error) {
     console.error("Delete failed:", error);
+    return { success: false, error: "Failed" };
+  }
+}
+
+export async function deleteWallet(id: string) {
+  await ensureInitialized();
+  try {
+    await deleteMultipleRowsByWalletId(id);
+    await deleteWalletById(id);
+    revalidatePath("/");
+    return { success: true };
+  } catch (error) {
+    console.error("Delete wallet failed:", error);
     return { success: false, error: "Failed" };
   }
 }

@@ -14,6 +14,7 @@ interface TransactionFormProps {
   defaultWalletId?: string;
   hideWalletSelect?: boolean;
   onSuccess?: () => void;
+  onStartSubmit?: () => void;
 }
 
 export function TransactionForm({
@@ -23,6 +24,7 @@ export function TransactionForm({
   defaultWalletId,
   hideWalletSelect = false,
   onSuccess,
+  onStartSubmit,
 }: TransactionFormProps) {
   const [loading, setLoading] = useState(false);
   const [displayAmount, setDisplayAmount] = useState(
@@ -61,6 +63,7 @@ export function TransactionForm({
     e.preventDefault();
     if (formData.amount <= 0) return;
 
+    onStartSubmit?.(); // optimistically close dialog
     setLoading(true);
     try {
       if (initialData?.id) {

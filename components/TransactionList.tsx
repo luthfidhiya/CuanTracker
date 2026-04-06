@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useTransition } from "react";
 import { Transaction, Wallet, Category } from "@/lib/types";
 import { GlassCard } from "./ui/glass-card";
 import { format, parseISO } from "date-fns";
@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "./ui/input";
 import { deleteTransaction, getTransactions } from "@/app/actions";
 import * as Dialog from "@radix-ui/react-dialog";
+import { ConfirmDialog } from "./ui/confirm-dialog";
 import { TransactionForm } from "./TransactionForm";
 
 interface TransactionListProps {
@@ -38,7 +39,11 @@ export function TransactionList({
     useState<Transaction[]>(initialTransactions);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const [confirmDelete, setConfirmDelete] = useState<{
+    id: string;
+    date: string;
+  } | null>(null);
   const [editingTransaction, setEditingTransaction] =
     useState<Transaction | null>(null);
   const [filterType, setFilterType] = useState<FilterType>("ALL");
@@ -79,20 +84,35 @@ export function TransactionList({
     return matchesQuery && matchesType;
   });
 
-  const handleDelete = async (id: string, date: string) => {
-    if (!confirm("Are you sure you want to delete this transaction?")) return;
-    setDeletingId(id);
-    try {
-      await deleteTransaction(id, date);
-    } catch {
-      alert("Failed to delete");
-    } finally {
-      setDeletingId(null);
-    }
+  const handleDelete = () => {
+    if (!confirmDelete) return;
+    const targetId = confirmDelete.id;
+    const targetDate = confirmDelete.date;
+    setConfirmDelete(null); // optimistic close
+    
+    startTransition(async () => {
+      try {
+        await deleteTransaction(targetId, targetDate);
+        await fetchTransactions(); // refresh local state
+      } catch {
+        console.error("Failed to delete transaction");
+      }
+    });
   };
 
   return (
-    <div className="space-y-6 lg:bg-slate-950/50 lg:backdrop-blur-xl lg:p-8 lg:rounded-[32px] lg:border lg:border-white/5 lg:shadow-2xl">
+    <div className="space-y-6 lg:bg-slate-950/50 lg:backdrop-blur-xl lg:p-8 lg:rounded-[32px] lg:border lg:border-white/5 lg:shadow-2xl relative">
+
+      {/* Sync Overlay */}
+      {(loading || isPending) && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/60 backdrop-blur-[2px] rounded-[32px]">
+          <Loader2 className="animate-spin mb-3 text-blue-400/50" size={36} />
+          <p className="text-xs capitalize font-bold tracking-[0.2em] text-blue-400/40">
+            Syncing Ledger...
+          </p>
+        </div>
+      )}
+
       {/* Header Controls */}
       <div className="space-y-4 lg:flex lg:space-y-0 lg:justify-between lg:items-center">
         <div className="flex justify-between items-center px-1 lg:px-0">
@@ -179,9 +199,14 @@ export function TransactionList({
                       <TransactionForm
                         wallets={wallets}
                         categories={categories}
-                        onSuccess={() => {
+                        onStartSubmit={() => {
                           setAddOpen(false);
-                          fetchTransactions();
+                          setLoading(true);
+                        }}
+                        onSuccess={() => {
+                          startTransition(async () => {
+                            await fetchTransactions();
+                          });
                         }}
                       />
                     </Dialog.Content>
@@ -212,14 +237,7 @@ export function TransactionList({
       </div>
 
       <div className="space-y-3 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0 min-h-[300px]">
-        {loading ? (
-          <div className="lg:col-span-2 flex flex-col items-center justify-center py-20 text-blue-400/30">
-            <Loader2 className="animate-spin mb-4" size={40} />
-            <p className="text-xs capitalize font-bold tracking-[0.2em]">
-              Syncing Ledger...
-            </p>
-          </div>
-        ) : filteredTransactions.length > 0 ? (
+        {filteredTransactions.length > 0 ? (
           filteredTransactions.map((t) => {
             const walletName = wallets.find((w) => w.id === t.walletId)?.name;
             const toWalletName = wallets.find(
@@ -309,15 +327,13 @@ export function TransactionList({
                       <Pencil size={12} />
                     </button>
                     <button
-                      onClick={() => handleDelete(t.id, t.date)}
-                      disabled={deletingId === t.id}
+                      onClick={() =>
+                        setConfirmDelete({ id: t.id, date: t.date })
+                      }
+                      disabled={isPending}
                       className="h-7 w-7 flex items-center justify-center rounded-lg bg-slate-800 text-slate-400 hover:bg-red-500/20 hover:text-red-400 transition-colors disabled:opacity-50"
                     >
-                      {deletingId === t.id ? (
-                        <Loader2 size={12} className="animate-spin" />
-                      ) : (
-                        <Trash2 size={12} />
-                      )}
+                      <Trash2 size={12} />
                     </button>
                   </div>
                 </div>
@@ -335,6 +351,7 @@ export function TransactionList({
           </div>
         )}
       </div>
+
 
       <Dialog.Root
         open={!!editingTransaction}
@@ -366,12 +383,30 @@ export function TransactionList({
                 wallets={wallets}
                 categories={categories}
                 initialData={editingTransaction}
-                onSuccess={() => setEditingTransaction(null)}
+                onStartSubmit={() => {
+                  setEditingTransaction(null);
+                  setLoading(true);
+                }}
+                onSuccess={() => {
+                  startTransition(async () => {
+                    await fetchTransactions();
+                  });
+                }}
               />
             )}
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onOpenChange={(open) => !open && setConfirmDelete(null)}
+        title="Delete Transaction?"
+        description="Are you sure you want to delete this transaction? This action cannot be undone."
+        onConfirm={handleDelete}
+        loading={isPending}
+        variant="danger"
+      />
     </div>
   );
 }

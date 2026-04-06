@@ -247,3 +247,62 @@ export async function getRangeData(startDate: Date, endDate: Date) {
   }
   return allTransactions;
 }
+
+export async function deleteMultipleRowsByWalletId(walletId: string) {
+  const sheets = await getSheets();
+  const spreadsheet = await sheets.spreadsheets.get({
+    spreadsheetId: SPREADSHEET_ID,
+  });
+
+  const transactionSheets =
+    spreadsheet.data.sheets
+      ?.map((s) => ({ title: s.properties?.title, sheetId: s.properties?.sheetId }))
+      .filter(
+        (s): s is { title: string; sheetId: number } => !!s.title && s.title.startsWith("Transactions_")
+      ) || [];
+
+  for (const { title, sheetId } of transactionSheets) {
+    if (!sheetId) continue;
+    const data = await getSheetData(`${title}!A:H`);
+    if (!data) continue;
+
+    const rowsToDelete: number[] = [];
+    data.forEach((row, idx) => {
+      // row[6] is WalletId, row[7] is ToWalletId
+      if (row[6] === walletId || row[7] === walletId) {
+        rowsToDelete.push(idx + 1);
+      }
+    });
+
+    if (rowsToDelete.length === 0) continue;
+
+    const requests = rowsToDelete.map(rowIndex => ({
+      deleteDimension: {
+        range: {
+          sheetId,
+          dimension: "ROWS",
+          startIndex: rowIndex - 1,
+          endIndex: rowIndex,
+        },
+      },
+    }));
+
+    requests.reverse(); // Reverse indices
+
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: {
+        requests,
+      },
+    });
+  }
+}
+
+export async function deleteWalletById(id: string) {
+  const rowIndex = await findRowIndexById("Wallets", id);
+  if (rowIndex) {
+    await deleteSheetRow("Wallets", rowIndex);
+  } else {
+    throw new Error("Wallet not found");
+  }
+}

@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useTransition } from "react";
 import { Category } from "@/lib/types";
 import { GlassCard } from "./ui/glass-card";
-import { Plus, Tag, Trash2, LayoutGrid } from "lucide-react";
+import { Plus, Tag, Trash2, LayoutGrid, Loader2 } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
+import { ConfirmDialog } from "./ui/confirm-dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { addCategory, deleteCategory } from "@/app/actions";
@@ -37,51 +38,48 @@ const COLORS = [
 
 export function CategoryList({ categories }: CategoryListProps) {
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     type: "EXPENSE",
     color: COLORS[0],
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    try {
-      await addCategory({
-        name: formData.name,
-        type: formData.type as "INCOME" | "EXPENSE",
-        color: formData.color,
-      });
-      setOpen(false);
-      setFormData({
-        name: "",
-        type: "EXPENSE",
-        color: COLORS[0],
-      });
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
+    setOpen(false);
+    
+    startTransition(async () => {
+      try {
+        await addCategory({
+          name: formData.name,
+          type: formData.type as "INCOME" | "EXPENSE",
+          color: formData.color,
+        });
+        setFormData({
+          name: "",
+          type: "EXPENSE",
+          color: COLORS[0],
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    });
   };
 
-  const handleDelete = async (id: string) => {
-    if (
-      !confirm(
-        "Delete this category? Transactions using it will keep their text label."
-      )
-    )
-      return;
-    setDeletingId(id);
-    try {
-      await deleteCategory(id);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setDeletingId(null);
-    }
+  const handleDelete = () => {
+    if (!confirmDeleteId) return;
+    const targetId = confirmDeleteId;
+    setConfirmDeleteId(null); // optimistic close
+    
+    startTransition(async () => {
+      try {
+        await deleteCategory(targetId);
+      } catch (error) {
+        console.error(error);
+      }
+    });
   };
 
   const incomeCategories = categories
@@ -92,7 +90,8 @@ export function CategoryList({ categories }: CategoryListProps) {
     .filter((c) => !c.name.startsWith("DELETED_"));
 
   return (
-    <div className="space-y-6 lg:bg-slate-950/50 lg:backdrop-blur-xl lg:p-8 lg:rounded-[32px] lg:border lg:border-white/5 lg:shadow-2xl min-h-[500px]">
+    <div className="space-y-6 lg:bg-slate-950/50 lg:backdrop-blur-xl lg:p-8 lg:rounded-[32px] lg:border lg:border-white/5 lg:shadow-2xl min-h-[500px] relative">
+
       <div className="flex justify-between items-center px-1 lg:px-0">
         <div>
           <h2 className="text-xl lg:text-3xl font-black text-white italic tracking-tighter capitalize relative inline-block">
@@ -189,16 +188,36 @@ export function CategoryList({ categories }: CategoryListProps) {
 
                 <Button
                   type="submit"
-                  disabled={loading}
+                  disabled={isPending}
                   className="w-full h-14 rounded-2xl mt-4 font-bold bg-linear-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400"
                 >
-                  {loading ? "Initializing..." : "Add Category"}
+                  {isPending ? "Initializing..." : "Add Category"}
                 </Button>
               </form>
             </Dialog.Content>
           </Dialog.Portal>
         </Dialog.Root>
+
+        <ConfirmDialog
+          open={!!confirmDeleteId}
+          onOpenChange={(open) => !open && setConfirmDeleteId(null)}
+          title="Delete Category?"
+          description="Transactions using it will keep their text label."
+          onConfirm={handleDelete}
+          loading={isPending}
+          variant="danger"
+        />
       </div>
+
+      {/* Sync Overlay */}
+      {isPending && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/60 backdrop-blur-[2px] rounded-[32px]">
+          <Loader2 className="animate-spin mb-3 text-blue-400/50" size={36} />
+          <p className="text-xs capitalize font-bold tracking-[0.2em] text-blue-400/40">
+            Syncing Vault...
+          </p>
+        </div>
+      )}
 
       {categories.length === 0 ? (
         <GlassCard className="flex flex-col items-center justify-center py-24 text-center border-white/5 border-dashed bg-slate-900/40">
@@ -244,10 +263,10 @@ export function CategoryList({ categories }: CategoryListProps) {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDelete(c.id);
+                        setConfirmDeleteId(c.id);
                       }}
-                      disabled={deletingId === c.id}
-                      className="h-8 w-8 flex items-center justify-center rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-400/10 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+                      disabled={isPending}
+                      className="h-8 w-8 flex items-center justify-center rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-400/10 transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100 cursor-pointer"
                     >
                       <Trash2 size={16} />
                     </button>
@@ -291,10 +310,10 @@ export function CategoryList({ categories }: CategoryListProps) {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDelete(c.id);
+                        setConfirmDeleteId(c.id);
                       }}
-                      disabled={deletingId === c.id}
-                      className="h-8 w-8 flex items-center justify-center rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-400/10 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+                      disabled={isPending}
+                      className="h-8 w-8 flex items-center justify-center rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-400/10 transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100 cursor-pointer"
                     >
                       <Trash2 size={16} />
                     </button>

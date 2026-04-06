@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useTransition } from "react";
 import { Wallet, Transaction, Category } from "@/lib/types";
 import { GlassCard } from "./ui/glass-card";
 import {
@@ -14,16 +14,23 @@ import {
   ArrowRightLeft,
   Trash2,
   Pencil,
-  Loader2,
   X,
+  Loader2,
 } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { addWallet, getTransactions, deleteTransaction } from "@/app/actions";
+import {
+  addWallet,
+  getTransactions,
+  deleteTransaction,
+  deleteWallet,
+} from "@/app/actions";
+
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { TransactionForm } from "./TransactionForm";
+import { ConfirmDialog } from "./ui/confirm-dialog";
 
 interface WalletListProps {
   wallets: (Wallet & { currentBalance: number })[];
@@ -43,9 +50,12 @@ const COLORS = [
 
 export function WalletList({ wallets, categories = [] }: WalletListProps) {
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [selectedWallet, setSelectedWallet] = useState<
     (Wallet & { currentBalance: number }) | null
+  >(null);
+  const [confirmDeleteWalletId, setConfirmDeleteWalletId] = useState<
+    string | null
   >(null);
   const [formData, setFormData] = useState({
     name: "",
@@ -54,29 +64,46 @@ export function WalletList({ wallets, categories = [] }: WalletListProps) {
     color: COLORS[0],
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleDeleteWallet = () => {
+    if (!confirmDeleteWalletId) return;
+    const targetId = confirmDeleteWalletId;
+    setConfirmDeleteWalletId(null); // optimistic close
+    
+    startTransition(async () => {
+      try {
+        await deleteWallet(targetId);
+        if (selectedWallet?.id === targetId) {
+          setSelectedWallet(null);
+        }
+      } catch (error) {
+        console.error("Failed to delete wallet", error);
+      }
+    });
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    try {
-      await addWallet({
-        name: formData.name,
-        type: formData.type,
-        initialBalance:
-          parseFloat(formData.initialBalance.replace(/\D/g, "")) || 0,
-        color: formData.color,
-      });
-      setOpen(false);
-      setFormData({
-        name: "",
-        type: "Bank",
-        initialBalance: "0",
-        color: COLORS[0],
-      });
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
+    setOpen(false); // optimistic close
+    
+    startTransition(async () => {
+      try {
+        await addWallet({
+          name: formData.name,
+          type: formData.type,
+          initialBalance:
+            parseFloat(formData.initialBalance.replace(/\D/g, "")) || 0,
+          color: formData.color,
+        });
+        setFormData({
+          name: "",
+          type: "Bank",
+          initialBalance: "0",
+          color: COLORS[0],
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    });
   };
 
   const handleBalanceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -100,7 +127,18 @@ export function WalletList({ wallets, categories = [] }: WalletListProps) {
   }
 
   return (
-    <div className="space-y-6 lg:bg-slate-950/50 lg:backdrop-blur-xl lg:p-8 lg:rounded-[32px] lg:border lg:border-white/5 lg:shadow-2xl min-h-[500px]">
+    <div className="space-y-6 lg:bg-slate-950/50 lg:backdrop-blur-xl lg:p-8 lg:rounded-[32px] lg:border lg:border-white/5 lg:shadow-2xl min-h-[500px] relative">
+
+      {/* Sync Overlay */}
+      {isPending && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/60 backdrop-blur-[2px] rounded-[32px]">
+          <Loader2 className="animate-spin mb-3 text-blue-400/50" size={36} />
+          <p className="text-xs capitalize font-bold tracking-[0.2em] text-blue-400/40">
+            Syncing Vaults...
+          </p>
+        </div>
+      )}
+
       <div className="flex justify-between items-center px-1 lg:px-0">
         <div>
           <h2 className="text-xl lg:text-3xl font-black text-white italic tracking-tighter capitalize relative inline-block">
@@ -220,10 +258,10 @@ export function WalletList({ wallets, categories = [] }: WalletListProps) {
 
                 <Button
                   type="submit"
-                  disabled={loading}
+                  disabled={isPending}
                   className="w-full h-14 rounded-2xl mt-4 font-bold bg-linear-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400"
                 >
-                  {loading ? "Deploying..." : "Initialize Wallet"}
+                  {isPending ? "Deploying..." : "Initialize Wallet"}
                 </Button>
               </form>
             </Dialog.Content>
@@ -232,89 +270,112 @@ export function WalletList({ wallets, categories = [] }: WalletListProps) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 lg:gap-6 lg:mt-6">
-        {wallets.map((wallet) => (
-          <GlassCard
-            key={wallet.id}
-            onClick={() => setSelectedWallet(wallet)}
-            className="p-6 relative overflow-hidden group border-white/10 bg-slate-900/60 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_60px_rgba(0,0,0,0.4)] cursor-pointer h-48 flex flex-col justify-between"
-          >
-            {/* Holographic / Gradient Card Background */}
-            <div
-              className="absolute inset-0 opacity-20 pointer-events-none transition-opacity duration-500 group-hover:opacity-30 bg-linear-to-br from-transparent to-current"
-              style={{ color: wallet.color }}
-            />
-            {/* Top Right Orb */}
-            <div
-              className="absolute -top-12 -right-12 w-32 h-32 rounded-full blur-3xl opacity-20 pointer-events-none"
-              style={{ backgroundColor: wallet.color }}
-            />
+          {wallets.map((wallet) => (
+            <GlassCard
+              key={wallet.id}
+              onClick={() => setSelectedWallet(wallet)}
+              className="p-6 relative overflow-hidden group border-white/10 bg-slate-900/60 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_60px_rgba(0,0,0,0.4)] cursor-pointer h-48 flex flex-col justify-between"
+            >
+              {/* Holographic / Gradient Card Background */}
+              <div
+                className="absolute inset-0 opacity-20 pointer-events-none transition-opacity duration-500 group-hover:opacity-30 bg-linear-to-br from-transparent to-current"
+                style={{ color: wallet.color }}
+              />
+              {/* Top Right Orb */}
+              <div
+                className="absolute -top-12 -right-12 w-32 h-32 rounded-full blur-3xl opacity-20 pointer-events-none"
+                style={{ backgroundColor: wallet.color }}
+              />
 
-            <div className="flex justify-between items-start relative z-10 w-full">
-              <div className="flex items-center gap-3">
-                <div
-                  className="h-10 w-10 rounded-xl flex items-center justify-center shadow-inner relative"
-                  style={{
-                    backgroundColor: `${wallet.color}20`,
-                    color: wallet.color,
-                  }}
-                >
+              <div className="flex justify-between items-start relative z-10 w-full">
+                <div className="flex items-center gap-3">
                   <div
-                    className="absolute inset-0 rounded-xl border opacity-30"
-                    style={{ borderColor: wallet.color }}
-                  ></div>
-                  <CreditCard size={20} />
+                    className="h-10 w-10 rounded-xl flex items-center justify-center shadow-inner relative"
+                    style={{
+                      backgroundColor: `${wallet.color}20`,
+                      color: wallet.color,
+                    }}
+                  >
+                    <div
+                      className="absolute inset-0 rounded-xl border opacity-30"
+                      style={{ borderColor: wallet.color }}
+                    ></div>
+                    <CreditCard size={20} />
+                  </div>
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-black text-slate-400 capitalize tracking-[0.2em] block">
+                      {wallet.type}
+                    </span>
+                    <h3 className="text-xl font-bold text-white tracking-tight leading-none">
+                      {wallet.name}
+                    </h3>
+                  </div>
                 </div>
-                <div className="space-y-0.5">
-                  <span className="text-[10px] font-black text-slate-400 capitalize tracking-[0.2em] block">
-                    {wallet.type}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDeleteWalletId(wallet.id);
+                    }}
+                    disabled={isPending}
+                    className="h-8 w-8 flex items-center justify-center rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-400/10 transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100 cursor-pointer"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                  {/* Fake Chip for aesthetics */}
+                  <div className="h-6 w-8 rounded bg-yellow-600/20 border border-yellow-500/30 flex flex-col justify-evenly p-1 overflow-hidden opacity-50">
+                    <div className="h-px w-full bg-yellow-500/30"></div>
+                    <div className="h-px w-full bg-yellow-500/30"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative z-10 mt-auto w-full">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-slate-400 capitalize tracking-widest">
+                    Current Balance
                   </span>
-                  <h3 className="text-xl font-bold text-white tracking-tight leading-none">
-                    {wallet.name}
-                  </h3>
+                  <Info size={12} className="text-slate-500" />
                 </div>
+                <p className="text-3xl font-black text-white tracking-widest shadow-black drop-shadow-md">
+                  <span className="text-sm mr-1.5 opacity-50 font-medium">
+                    Rp
+                  </span>
+                  {wallet.currentBalance.toLocaleString("id-ID")}
+                </p>
               </div>
 
-              {/* Fake Chip for aesthetics */}
-              <div className="h-6 w-8 rounded bg-yellow-600/20 border border-yellow-500/30 flex flex-col justify-evenly p-1 overflow-hidden opacity-50">
-                <div className="h-px w-full bg-yellow-500/30"></div>
-                <div className="h-px w-full bg-yellow-500/30"></div>
+              {/* Decorative Card Numbers */}
+              <div className="absolute bottom-6 right-6 font-mono text-white/5 text-sm font-bold tracking-widest pointer-events-none">
+                **** **** **** {wallet.id.substring(0, 4)}
               </div>
-            </div>
+            </GlassCard>
+          ))}
 
-            <div className="relative z-10 mt-auto w-full">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-bold text-slate-400 capitalize tracking-widest">
-                  Current Balance
-                </span>
-                <Info size={12} className="text-slate-500" />
-              </div>
-              <p className="text-3xl font-black text-white tracking-widest shadow-black drop-shadow-md">
-                <span className="text-sm mr-1.5 opacity-50 font-medium">
-                  Rp
-                </span>
-                {wallet.currentBalance.toLocaleString("id-ID")}
+          {wallets.length === 0 && (
+            <div className="col-span-1 md:col-span-2 xl:col-span-3 flex flex-col items-center justify-center py-24 text-slate-500">
+              <LayoutGrid size={48} className="mb-4 opacity-20" />
+              <p className="text-sm font-bold capitalize tracking-[0.2em] text-cyan-400/50">
+                System Empty
+              </p>
+              <p className="text-xs capitalize mt-0 tracking-widest">
+                Deploy your first financial node
               </p>
             </div>
-
-            {/* Decorative Card Numbers */}
-            <div className="absolute bottom-6 right-6 font-mono text-white/5 text-sm font-bold tracking-widest pointer-events-none">
-              **** **** **** {wallet.id.substring(0, 4)}
-            </div>
-          </GlassCard>
-        ))}
-
-        {wallets.length === 0 && (
-          <div className="col-span-1 md:col-span-2 xl:col-span-3 flex flex-col items-center justify-center py-24 text-slate-500">
-            <LayoutGrid size={48} className="mb-4 opacity-20" />
-            <p className="text-sm font-bold capitalize tracking-[0.2em] text-cyan-400/50">
-              System Empty
-            </p>
-            <p className="text-xs capitalize mt-0 tracking-widest">
-              Deploy your first financial node
-            </p>
-          </div>
-        )}
+          )}
       </div>
+
+      <ConfirmDialog
+        open={!!confirmDeleteWalletId}
+        onOpenChange={(open) => !open && setConfirmDeleteWalletId(null)}
+        title="Delete Wallet?"
+        description="This will permanently delete this wallet and ALL transactions associated with it."
+        onConfirm={handleDeleteWallet}
+        loading={isPending}
+        variant="danger"
+      />
+
     </div>
   );
 }
@@ -334,13 +395,33 @@ function WalletDetail({
 }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isPending, startTransition] = useTransition();
   const [selectedMonth, setSelectedMonth] = useState(
     format(new Date(), "yyyy-MM")
   );
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<{
+    id: string;
+    date: string;
+  } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] =
     useState<Transaction | null>(null);
+
+  const handleDeleteTransaction = () => {
+    if (!confirmDeleteId) return;
+    const targetId = confirmDeleteId.id;
+    const targetDate = confirmDeleteId.date;
+    setConfirmDeleteId(null); // optimistic close
+    
+    startTransition(async () => {
+      try {
+        await deleteTransaction(targetId, targetDate);
+        await fetchTransactions(); // refresh local state
+      } catch {
+        console.error("Failed to delete transaction");
+      }
+    });
+  };
 
   const fetchTransactions = async () => {
     setLoading(true);
@@ -365,21 +446,19 @@ function WalletDetail({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMonth]);
 
-  const handleDelete = async (id: string, date: string) => {
-    if (!confirm("Delete this transaction?")) return;
-    setDeletingId(id);
-    try {
-      await deleteTransaction(id, date);
-      await fetchTransactions();
-    } catch {
-      alert("Failed to delete");
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
   return (
-    <div className="space-y-6 lg:bg-slate-950/50 lg:backdrop-blur-xl lg:p-8 lg:rounded-[32px] lg:border lg:border-white/5 lg:shadow-2xl min-h-[500px]">
+    <div className="space-y-6 lg:bg-slate-950/50 lg:backdrop-blur-xl lg:p-8 lg:rounded-[32px] lg:border lg:border-white/5 lg:shadow-2xl min-h-[500px] relative">
+
+      {/* Sync Overlay */}
+      {(loading || isPending) && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/60 backdrop-blur-[2px] rounded-[32px]">
+          <Loader2 className="animate-spin mb-3 text-blue-400/50" size={36} />
+          <p className="text-xs capitalize font-bold tracking-[0.2em] text-blue-400/40">
+            Syncing Ledger...
+          </p>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center gap-4 px-1 lg:px-0">
         <button
@@ -451,8 +530,11 @@ function WalletDetail({
                 categories={categories}
                 defaultWalletId={wallet.id}
                 hideWalletSelect
-                onSuccess={() => {
+                onStartSubmit={() => {
                   setAddOpen(false);
+                  setLoading(true);
+                }}
+                onSuccess={() => {
                   fetchTransactions();
                 }}
               />
@@ -475,16 +557,9 @@ function WalletDetail({
       </div>
 
       {/* Transaction List */}
-      <div className="space-y-3">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 text-blue-400/30">
-            <Loader2 className="animate-spin mb-4" size={40} />
-            <p className="text-xs capitalize font-bold tracking-[0.2em]">
-              Syncing Ledger...
-            </p>
-          </div>
-        ) : transactions.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-center">
+      <div className="space-y-3 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0 min-h-[300px]">
+        {transactions.length === 0 && !loading ? (
+          <div className="lg:col-span-2 flex flex-col items-center justify-center py-24 text-center">
             <div
               className="h-16 w-16 rounded-full flex items-center justify-center mb-4 border"
               style={{
@@ -577,15 +652,13 @@ function WalletDetail({
                       <Pencil size={14} />
                     </button>
                     <button
-                      onClick={() => handleDelete(t.id, t.date)}
-                      disabled={deletingId === t.id}
+                      onClick={() =>
+                        setConfirmDeleteId({ id: t.id, date: t.date })
+                      }
+                      disabled={isPending}
                       className="h-8 w-8 flex items-center justify-center rounded-lg text-red-400/60 hover:text-red-400 hover:bg-red-400/10 transition-colors cursor-pointer"
                     >
-                      {deletingId === t.id ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        <Trash2 size={14} />
-                      )}
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 </div>
@@ -628,15 +701,30 @@ function WalletDetail({
                 defaultWalletId={wallet.id}
                 hideWalletSelect
                 initialData={editingTransaction}
-                onSuccess={() => {
+                onStartSubmit={() => {
                   setEditingTransaction(null);
-                  fetchTransactions();
+                  setLoading(true);
+                }}
+                onSuccess={() => {
+                  startTransition(async () => {
+                    await fetchTransactions();
+                  });
                 }}
               />
             )}
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
+
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        onOpenChange={(open) => !open && setConfirmDeleteId(null)}
+        title="Delete Transaction?"
+        description="Are you sure you want to delete this transaction?"
+        onConfirm={handleDeleteTransaction}
+        loading={isPending}
+        variant="danger"
+      />
     </div>
   );
 }

@@ -30,9 +30,9 @@ The tradeoff is that it is best suited for personal/small-scale use (not thousan
 | 🔍 **Per-Wallet Transaction History** | Click any wallet card to see transactions filtered to that wallet                                                        |
 | 📋 **Global Transaction Log**         | Full history across all wallets with month navigation and type filtering                                                 |
 | ➕ **Income / Expense / Transfer**    | Log all three transaction types; transfers move money between your own wallets                                           |
-| 🏷️ **Category Management**            | Define custom Income and Expense categories with individual color profiles                                               |
+| 🏷️ **Category Management**            | Define custom Income and Expense categories; soft-delete preserves historical labels                                     |
 | 🔎 **Search & Filter**                | Search by category or note; filter by All / Income / Expense / Transfer                                                  |
-| ✏️ **Edit & Delete**                  | Inline edit and delete for every transaction                                                                             |
+| ✏️ **Edit & Delete**                  | Inline edit and delete for every transaction, category, and wallet                                                       |
 | 📈 **Analytics Tab**                  | Area chart for cash-flow trends, pie charts for spend-by-category, spend-by-wallet, income-by-wallet over any date range |
 | 🌙 **Premium Dark UI**                | Neon aurora background, glassmorphism cards, smooth animations, fully responsive                                         |
 
@@ -47,6 +47,7 @@ The tradeoff is that it is best suited for personal/small-scale use (not thousan
 | **Icons**          | [Lucide React](https://lucide.dev/)                                               |
 | **Charts**         | [Recharts](https://recharts.org/)                                                 |
 | **Dialogs / Tabs** | [Radix UI](https://www.radix-ui.com/)                                             |
+| **Auth**           | [NextAuth.js v5](https://authjs.dev/) (Credentials provider, JWT session)         |
 | **Database**       | [Google Sheets API v4](https://developers.google.com/sheets/api) via `googleapis` |
 | **Date handling**  | [date-fns](https://date-fns.org/)                                                 |
 | **Language**       | TypeScript                                                                        |
@@ -104,6 +105,12 @@ GOOGLE_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\nYOUR_PRIVATE_KEY_HERE\n----
 
 # Google Spreadsheet ID
 SPREADSHEET_ID=your_spreadsheet_id_here
+
+# App password for login (used by NextAuth)
+APP_PASSWORD=your_secure_password_here
+
+# NextAuth secret (generate with: openssl rand -base64 32)
+AUTH_SECRET=your_auth_secret_here
 ```
 
 > **Important:** Copy the `private_key` value from the downloaded JSON file exactly as-is, keeping the `\n` escape sequences intact and wrapping the entire value in double quotes.
@@ -120,7 +127,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://localhost:3000](http://localhost:3000) in your browser. You will be redirected to `/login` — use the password you set in `APP_PASSWORD`.
 
 On first load, the app automatically creates the required sheets in your spreadsheet:
 
@@ -180,26 +187,33 @@ npm run lint     # Run ESLint
 
 ```
 ├── app/
-│   ├── actions.ts          # All server actions (CRUD for wallets, transactions, categories)
-│   ├── layout.tsx          # Root layout with metadata and font
-│   └── page.tsx            # Entry point — fetches initial data and renders AppShell
+│   ├── actions.ts              # All server actions (CRUD for wallets, transactions, categories)
+│   ├── layout.tsx              # Root layout with metadata and font
+│   ├── page.tsx                # Entry point — fetches initial data and renders AppShell
+│   ├── login/
+│   │   ├── page.tsx            # Login page
+│   │   └── actions.ts          # Login server action (NextAuth signIn)
+│   └── api/auth/[...nextauth]/ # NextAuth HTTP handlers (GET/POST)
+│       └── route.ts
 ├── components/
-│   ├── AppShell.tsx        # Main layout: sidebar, bottom nav, tab routing
-│   ├── Dashboard.tsx       # Overview: balance cards + income/expense bar chart
-│   ├── WalletList.tsx      # Wallet grid + per-wallet transaction detail view
-│   ├── TransactionList.tsx # Global transaction history with search/filter
-│   ├── TransactionForm.tsx # Shared form for add/edit transactions
-│   ├── CategoryList.tsx    # Category management UI
-│   ├── Monitoring.tsx      # Analytics: area chart + pie charts
+│   ├── AppShell.tsx            # Main layout: desktop sidebar, mobile sticky header + horizontal tabs, FAB
+│   ├── Dashboard.tsx           # Overview: balance card + bar chart + horizontal wallet scroller (mobile)
+│   ├── WalletList.tsx          # Wallet grid + per-wallet transaction detail view
+│   ├── TransactionList.tsx     # Global transaction history with search/filter
+│   ├── TransactionForm.tsx     # Shared form for add/edit transactions
+│   ├── CategoryList.tsx        # Category management UI with soft-delete support
+│   ├── Monitoring.tsx          # Analytics: area chart + pie charts
 │   └── ui/
-│       ├── glass-card.tsx  # Reusable glassmorphism card component
-│       ├── button.tsx      # Styled button
-│       └── input.tsx       # Styled input
+│       ├── glass-card.tsx      # Reusable glassmorphism card component
+│       ├── button.tsx          # Styled button
+│       ├── input.tsx           # Styled input
+│       └── confirm-dialog.tsx  # Reusable confirmation dialog
 ├── lib/
-│   ├── google.ts           # Google Sheets API client and CRUD helpers
-│   ├── types.ts            # All TypeScript interfaces
-│   └── utils.ts            # cn() utility for class merging
-└── .env.local              # Environment variables (not committed to git)
+│   ├── google.ts               # Google Sheets API client and CRUD helpers
+│   ├── types.ts                # All TypeScript interfaces
+│   └── utils.ts                # cn() utility for class merging
+├── auth.ts                     # NextAuth configuration (Credentials provider, JWT, route guards)
+└── .env.local                  # Environment variables (not committed to git)
 ```
 
 ---
@@ -210,7 +224,12 @@ npm run lint     # Run ESLint
 
 1. Push your repository to GitHub
 2. Import the project on [Vercel](https://vercel.com)
-3. Add the three environment variables in **Project Settings → Environment Variables**
+3. Add all environment variables in **Project Settings → Environment Variables**:
+   - `GOOGLE_CLIENT_EMAIL`
+   - `GOOGLE_PRIVATE_KEY`
+   - `SPREADSHEET_ID`
+   - `APP_PASSWORD`
+   - `AUTH_SECRET`
 4. Deploy — Vercel handles the Next.js build automatically
 
 ### Self-hosted
@@ -220,7 +239,7 @@ npm run build
 npm run start
 ```
 
-Make sure the three environment variables are set in your server environment.
+Make sure all environment variables are set in your server environment.
 
 ---
 

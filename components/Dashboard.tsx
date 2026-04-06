@@ -132,13 +132,13 @@ export function Dashboard({ data }: { data: DashboardStats }) {
           </GlassCard>
 
           <GlassCard className="p-6 flex flex-col h-full bg-slate-900/40 border-white/5">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-4 lg:mb-6">
               <h3 className="text-sm font-black text-slate-400 capitalize tracking-widest flex items-center gap-2">
                 <CreditCard size={14} className="text-cyan-400" />
                 Quick Wallets
               </h3>
             </div>
-            <div className="space-y-4 flex-1 overflow-y-auto no-scrollbar">
+            <div className="flex lg:flex-col gap-4 overflow-x-auto lg:overflow-y-auto lg:overflow-x-hidden lg:flex-1 pb-2 lg:pb-0 no-scrollbar snap-x">
               {data.wallets.length === 0 ? (
                 <div className="text-slate-500 text-xs text-center mt-10 italic">
                   No wallets found
@@ -147,7 +147,7 @@ export function Dashboard({ data }: { data: DashboardStats }) {
                 data.wallets.slice(0, 4).map((wallet) => (
                   <div
                     key={wallet.id}
-                    className="p-4 rounded-2xl bg-slate-800/50 border border-white/5 flex flex-col gap-1 transition-all hover:bg-slate-800"
+                    className="p-4 w-[200px] shrink-0 snap-start lg:w-auto rounded-2xl bg-slate-800/50 border border-white/5 flex flex-col gap-1 transition-all hover:bg-slate-800"
                   >
                     <div className="flex items-center gap-3">
                       <div
@@ -175,12 +175,12 @@ export function Dashboard({ data }: { data: DashboardStats }) {
         </div>
       </div>
 
-      {/* RIGHT COLUMN: Recent Activity (Desktop Only config visually) */}
+      {/* RIGHT COLUMN: Recent Activity */}
       <div className="lg:w-[350px] xl:w-[400px] flex flex-col gap-4">
-        <h3 className="text-sm font-black text-slate-400 capitalize tracking-widest mb-2 px-2">
+        <h3 className="text-sm font-black text-slate-400 capitalize tracking-widest mb-0 lg:mb-2 px-2 mt-4 lg:mt-0">
           Recent Activity
         </h3>
-        <div className="flex-1 space-y-3 overflow-y-auto no-scrollbar pb-10">
+        <div className="flex-1 space-y-3 lg:overflow-y-auto no-scrollbar">
           {data.recentTransactions.length === 0 ? (
             <GlassCard className="p-8 text-center text-slate-500 text-sm border-white/5 bg-slate-900/40">
               No recent activity.
