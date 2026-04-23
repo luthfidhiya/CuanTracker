@@ -17,26 +17,21 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "./ui/input";
-import { deleteTransaction, getTransactions } from "@/app/actions";
+import { deleteTransaction, getTransactions, getWallets, getCategories } from "@/app/actions";
 import * as Dialog from "@radix-ui/react-dialog";
 import { ConfirmDialog } from "./ui/confirm-dialog";
 import { TransactionForm } from "./TransactionForm";
-
-interface TransactionListProps {
-  transactions: Transaction[];
-  wallets?: Wallet[];
-  categories?: Category[];
-}
+import { usePrivacy } from "./PrivacyContext";
+import { useRefresh } from "./RefreshContext";
 
 type FilterType = "ALL" | "INCOME" | "EXPENSE" | "TRANSFER";
 
-export function TransactionList({
-  transactions: initialTransactions,
-  wallets = [],
-  categories = [],
-}: TransactionListProps) {
-  const [transactions, setTransactions] =
-    useState<Transaction[]>(initialTransactions);
+export function TransactionList() {
+  const { isHidden } = usePrivacy();
+  const { refreshKey, triggerRefresh } = useRefresh();
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -50,10 +45,10 @@ export function TransactionList({
   const [selectedMonth, setSelectedMonth] = useState(
     format(new Date(), "yyyy-MM")
   );
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
 
-  // function to refresh transactions after an add/edit
+  // Fetch transactions
   const fetchTransactions = async () => {
     setLoading(true);
     try {
@@ -67,14 +62,24 @@ export function TransactionList({
     }
   };
 
+  // Fetch wallets and categories on mount
+  useEffect(() => {
+    const fetchMeta = async () => {
+      try {
+        const [w, c] = await Promise.all([getWallets(), getCategories()]);
+        setWallets(w);
+        setCategories(c);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchMeta();
+  }, []);
+
   useEffect(() => {
     fetchTransactions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMonth]);
-
-  useEffect(() => {
-    setTransactions(initialTransactions);
-  }, [initialTransactions]);
+  }, [selectedMonth, refreshKey]);
 
   const filteredTransactions = transactions.filter((t) => {
     const matchesQuery =
@@ -93,7 +98,9 @@ export function TransactionList({
     startTransition(async () => {
       try {
         await deleteTransaction(targetId, targetDate);
-        await fetchTransactions(); // refresh local state
+        // Delay to let Google Sheets propagate, then signal all tabs to refetch
+        await new Promise((r) => setTimeout(r, 600));
+        triggerRefresh();
       } catch {
         console.error("Failed to delete transaction");
       }
@@ -204,9 +211,9 @@ export function TransactionList({
                           setLoading(true);
                         }}
                         onSuccess={() => {
-                          startTransition(async () => {
-                            await fetchTransactions();
-                          });
+                          setTimeout(() => {
+                            triggerRefresh();
+                          }, 600);
                         }}
                       />
                     </Dialog.Content>
@@ -312,11 +319,17 @@ export function TransactionList({
                         : "text-red-400"
                     )}
                   >
-                    {t.type === "EXPENSE" ? "-" : "+"}
-                    <span className="text-xs mr-1 opacity-50 font-medium">
-                      Rp
-                    </span>
-                    {t.amount.toLocaleString("id-ID")}
+                    {isHidden ? (
+                      <>••••••</>
+                    ) : (
+                      <>
+                        {t.type === "EXPENSE" ? "-" : "+"}
+                        <span className="text-xs mr-1 opacity-50 font-medium">
+                          {wallets.find(w => w.id === t.walletId)?.currencySymbol || "Rp"}
+                        </span>
+                        {t.amount.toLocaleString("id-ID")}
+                      </>
+                    )}
                   </p>
 
                   <div className="flex gap-2">
@@ -388,9 +401,9 @@ export function TransactionList({
                   setLoading(true);
                 }}
                 onSuccess={() => {
-                  startTransition(async () => {
-                    await fetchTransactions();
-                  });
+                  setTimeout(() => {
+                    triggerRefresh();
+                  }, 600);
                 }}
               />
             )}

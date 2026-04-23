@@ -7,6 +7,8 @@ export interface Wallet {
   type: string;
   initialBalance: number;
   color: string;
+  currencyCode: string;
+  currencySymbol: string;
 }
 
 export interface Category {
@@ -28,12 +30,14 @@ export interface Transaction {
 }
 
 export interface DashboardStats {
-  totalBalance: number;
+  totalBalanceIdr: number;
+  totalBalanceUsd: number;
   incomeThisMonth: number;
   expenseThisMonth: number;
   recentTransactions: Transaction[];
   wallets: (Wallet & { currentBalance: number })[];
   categories: Category[];
+  exchangeRates: import("./exchange").ExchangeRates;
 }
 
 export interface MonthlyTrend {

@@ -1,9 +1,12 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { DashboardStats } from "@/lib/types";
 import { GlassCard } from "./ui/glass-card";
-import { TrendingUp, CreditCard, Activity } from "lucide-react";
+import { TrendingUp, CreditCard, Activity, Loader2 } from "lucide-react";
+import { usePrivacy, maskAmount } from "./PrivacyContext";
+import { useRefresh } from "./RefreshContext";
+import { cn } from "@/lib/utils";
 import {
   ResponsiveContainer,
   BarChart,
@@ -12,8 +15,46 @@ import {
   Tooltip,
   Cell,
 } from "recharts";
+import { getDashboardData } from "@/app/actions";
 
-export function Dashboard({ data }: { data: DashboardStats }) {
+export function Dashboard({ 
+  onNavigateTab, 
+  onWalletClick 
+}: { 
+  onNavigateTab?: (tab: string) => void;
+  onWalletClick?: (walletId: string) => void; 
+}) {
+  const { isHidden } = usePrivacy();
+  const { refreshKey } = useRefresh();
+  const [data, setData] = useState<DashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const result = await getDashboardData();
+        setData(result);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [refreshKey]);
+
+  if (loading || !data) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[400px]">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="animate-spin text-blue-400/50" size={36} />
+          <p className="text-xs capitalize font-bold tracking-[0.2em] text-blue-400/40">Loading Dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
   const chartData = [
     { name: "Income", value: data.incomeThisMonth, color: "#3B82F6" }, // Blue
     { name: "Expense", value: data.expenseThisMonth, color: "#06B6D4" }, // Cyan
@@ -31,17 +72,24 @@ export function Dashboard({ data }: { data: DashboardStats }) {
             <div className="absolute -top-24 -right-24 w-48 h-48 bg-blue-500 rounded-full mix-blend-screen filter blur-[80px] opacity-30"></div>
 
             <div className="flex justify-between items-start relative z-10">
-              <div className="space-y-2">
+              <div className="space-y-4">
                 <p className="text-blue-400/60 text-xs font-black capitalize tracking-[0.3em] flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
                   Available Balance
                 </p>
-                <h2 className="text-5xl sm:text-6xl lg:text-7xl font-black text-transparent bg-clip-text bg-linear-to-b from-white to-slate-400 tracking-tighter">
-                  <span className="text-2xl font-medium text-slate-500 mr-2 italic">
-                    Rp
-                  </span>
-                  {data.totalBalance.toLocaleString("id-ID")}
-                </h2>
+                <div className="flex flex-col gap-2">
+                  <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black text-transparent bg-clip-text bg-linear-to-b from-white to-slate-400 tracking-tighter flex items-baseline">
+                    <span className="text-2xl sm:text-3xl lg:text-4xl font-bold text-slate-400 mr-3">Rp</span>
+                    {maskAmount(data.totalBalanceIdr, isHidden)}
+                  </h2>
+                  <h3 className="text-2xl sm:text-3xl font-black text-slate-400 tracking-tighter opacity-80 flex items-baseline">
+                    <span className="text-xl sm:text-2xl font-bold text-slate-500 mr-3">$</span>
+                    {maskAmount(data.totalBalanceUsd, isHidden)}
+                  </h3>
+                  <div className="mt-2 text-xs font-bold text-slate-500/80 tracking-widest uppercase">
+                    1 USD = Rp {data.exchangeRates?.usdToIdr?.toLocaleString('id-ID') || "..."}
+                  </div>
+                </div>
               </div>
               <div className="hidden sm:flex h-16 w-16 bg-blue-500/10 rounded-2xl items-center justify-center border border-blue-500/20 shadow-[0_0_30px_rgba(59,130,246,0.2)]">
                 <TrendingUp className="text-blue-400" size={32} />
@@ -50,11 +98,33 @@ export function Dashboard({ data }: { data: DashboardStats }) {
           </GlassCard>
         </div>
 
+        {/* Crypto Rates Mini Bar */}
+        <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 px-1 snap-x">
+          {[
+            { symbol: "₿", name: "BTC", price: data.exchangeRates.btcToUsd },
+            { symbol: "Ξ", name: "ETH", price: data.exchangeRates.ethToUsd },
+            { symbol: "USDC", name: "USDC", price: data.exchangeRates.usdcToUsd },
+          ].map((coin) => (
+            <GlassCard key={coin.name} className="flex-1 min-w-fit shrink-0 snap-start flex items-center gap-3 py-3 px-4 bg-slate-900/40 border-white/5 group hover:bg-slate-800/60 transition-colors">
+              <span className={cn("font-black text-white/50 group-hover:text-blue-400 transition-colors text-center", coin.symbol === "USDC" ? "text-sm w-8" : "text-2xl w-8")}>{coin.symbol}</span>
+              <div className="flex flex-col">
+                <p className="text-[10px] font-black text-slate-500 tracking-[0.2em]">{coin.name}</p>
+                <p className="text-sm font-bold text-white whitespace-nowrap">
+                  $ {coin.price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+            </GlassCard>
+          ))}
+        </div>
+
         {/* Charts & Mini Wallets Row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0">
-          <GlassCard className="p-6 flex flex-col h-full bg-slate-900/40 border-white/5 relative overflow-hidden">
+          <GlassCard 
+            className="p-6 flex flex-col h-full bg-slate-900/40 border-white/5 relative overflow-hidden cursor-pointer hover:bg-slate-800/60 transition-colors group"
+            onClick={() => onNavigateTab?.("monitoring")}
+          >
             {/* Background Glow */}
-            <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500 rounded-full mix-blend-screen filter blur-[120px] opacity-10 pointer-events-none"></div>
+            <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500 rounded-full mix-blend-screen filter blur-[120px] opacity-10 pointer-events-none group-hover:opacity-20 transition-opacity"></div>
 
             <div className="flex flex-col mb-6 gap-4 relative z-10">
               <h3 className="text-sm font-black text-slate-400 capitalize tracking-widest flex items-center gap-2">
@@ -72,7 +142,7 @@ export function Dashboard({ data }: { data: DashboardStats }) {
                     </span>
                   </div>
                   <p className="text-lg font-black text-white tracking-tight">
-                    Rp {data.incomeThisMonth.toLocaleString("id-ID")}
+                    {maskAmount(data.incomeThisMonth, isHidden, "Rp ")}
                   </p>
                 </div>
 
@@ -85,13 +155,13 @@ export function Dashboard({ data }: { data: DashboardStats }) {
                     </span>
                   </div>
                   <p className="text-lg font-black text-white tracking-tight">
-                    Rp {data.expenseThisMonth.toLocaleString("id-ID")}
+                    {maskAmount(data.expenseThisMonth, isHidden, "Rp ")}
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="flex-1 w-full min-h-[150px] relative z-10">
+            <div className={cn("flex-1 w-full min-h-[150px] relative z-10 transition-all duration-500", isHidden ? "blur-md opacity-30 pointer-events-none" : "")}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData}>
                   <XAxis
@@ -113,9 +183,7 @@ export function Dashboard({ data }: { data: DashboardStats }) {
                     }}
                     itemStyle={{ color: "#fff" }}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    formatter={(val: any) =>
-                      `Rp ${Number(val).toLocaleString("id-ID")}`
-                    }
+                    formatter={(val: any) => maskAmount(Number(val), isHidden, "Rp ")}
                   />
                   <Bar dataKey="value" radius={[12, 12, 12, 12]} barSize={48}>
                     {chartData.map((entry, index) => (
@@ -138,16 +206,20 @@ export function Dashboard({ data }: { data: DashboardStats }) {
                 Quick Wallets
               </h3>
             </div>
-            <div className="flex lg:flex-col gap-4 overflow-x-auto lg:overflow-y-auto lg:overflow-x-hidden lg:flex-1 pb-2 lg:pb-0 no-scrollbar snap-x">
+            <div 
+              className="flex lg:flex-col gap-4 overflow-x-auto lg:overflow-y-auto lg:overflow-x-hidden lg:flex-1 pb-2 lg:pb-0 no-scrollbar snap-x"
+              onPointerDownCapture={(e) => e.stopPropagation()}
+            >
               {data.wallets.length === 0 ? (
                 <div className="text-slate-500 text-xs text-center mt-10 italic">
                   No wallets found
                 </div>
               ) : (
-                data.wallets.slice(0, 4).map((wallet) => (
+                data.wallets.map((wallet) => (
                   <div
                     key={wallet.id}
-                    className="p-4 w-[200px] shrink-0 snap-start lg:w-auto rounded-2xl bg-slate-800/50 border border-white/5 flex flex-col gap-1 transition-all hover:bg-slate-800"
+                    onClick={() => onWalletClick?.(wallet.id)}
+                    className="p-4 w-[200px] shrink-0 snap-start lg:w-auto rounded-2xl bg-slate-800/50 border border-white/5 flex flex-col gap-1 transition-all hover:bg-slate-800 cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
                       <div
@@ -161,11 +233,15 @@ export function Dashboard({ data }: { data: DashboardStats }) {
                         {wallet.name}
                       </span>
                     </div>
-                    <span className="text-lg font-black text-white pl-5 tracking-tight">
-                      <span className="text-xs text-slate-500 mr-1 font-medium">
-                        Rp
-                      </span>
-                      {wallet.currentBalance.toLocaleString("id-ID")}
+                    <span className="text-lg font-black text-white pl-5 tracking-tight transition-all">
+                      {isHidden ? (
+                        <>••••••</>
+                      ) : (
+                        <>
+                          <span className="text-xs text-slate-500 mr-1 font-medium">{wallet.currencySymbol}</span>
+                          {wallet.currentBalance.toLocaleString("id-ID")}
+                        </>
+                      )}
                     </span>
                   </div>
                 ))
@@ -212,12 +288,23 @@ export function Dashboard({ data }: { data: DashboardStats }) {
                     <p className="text-sm font-bold text-white group-hover:text-blue-300 transition-colors">
                       {t.category || t.description || "Transfer"}
                     </p>
-                    <p className="text-xs text-slate-400 capitalize tracking-widest font-semibold mt-0.5">
-                      {new Date(t.date).toLocaleDateString("en-GB", {
-                        day: "numeric",
-                        month: "short",
-                      })}
-                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <p className="text-xs text-slate-400 capitalize tracking-widest font-semibold">
+                        {new Date(t.date).toLocaleDateString("en-GB", {
+                          day: "numeric",
+                          month: "short",
+                        })}
+                      </p>
+                      {(() => {
+                        const w = data.wallets.find(w => w.id === t.walletId);
+                        return w ? (
+                          <span className="text-[9px] font-bold tracking-wider px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: `${w.color}15`, color: w.color }}>
+                            {w.name}
+                          </span>
+                        ) : null;
+                      })()}
+                    </div>
                   </div>
                 </div>
                 <div
@@ -229,8 +316,7 @@ export function Dashboard({ data }: { data: DashboardStats }) {
                       : "text-slate-400"
                   }`}
                 >
-                  {t.type === "INCOME" ? "+" : t.type === "EXPENSE" ? "-" : ""}
-                  {t.amount.toLocaleString("id-ID")}
+                  {maskAmount(t.amount, isHidden, (t.type === "INCOME" ? "+" : t.type === "EXPENSE" ? "-" : "") + (data.wallets.find(w => w.id === t.walletId)?.currencySymbol || "Rp") + " ")}
                 </div>
               </GlassCard>
             ))

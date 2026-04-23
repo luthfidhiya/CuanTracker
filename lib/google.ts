@@ -35,8 +35,8 @@ export function getMonthlySheetName(date: Date = new Date()) {
   return `Transactions_${format(date, "MMMyyy")}`;
 }
 
-async function createSheetIfNotExists(sheetName: string, headers: string[]) {
-  if (sheetsInitialized.has(sheetName)) return;
+export async function createSheetIfNotExists(sheetName: string, headers: string[]) {
+  if (sheetsInitialized.has(sheetName)) return false;
 
   const sheets = await getSheets();
 
@@ -49,7 +49,7 @@ async function createSheetIfNotExists(sheetName: string, headers: string[]) {
 
   if (existingSheets.includes(sheetName)) {
     sheetsInitialized.add(sheetName);
-    return;
+    return false;
   }
 
   console.log(`📄 Creating sheet: ${sheetName}`);
@@ -69,6 +69,48 @@ async function createSheetIfNotExists(sheetName: string, headers: string[]) {
   });
 
   sheetsInitialized.add(sheetName);
+  return true;
+}
+
+export async function updateWalletFormulas() {
+  const sheets = await getSheets();
+  const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+
+  const transactionSheets = spreadsheet.data.sheets
+    ?.map(s => s.properties?.title)
+    .filter((title): title is string => !!title && title.startsWith("Transactions_")) || [];
+
+  const walletsRangeData = await getSheetData("Wallets!A2:H");
+  if (!walletsRangeData || walletsRangeData.length === 0) return;
+
+  const values = walletsRangeData.map((row, idx) => {
+    const rowNum = idx + 2;
+    let formula = `=D${rowNum}`;
+
+    if (transactionSheets.length > 0) {
+      for (const sheetName of transactionSheets) {
+        formula += ` + SUMPRODUCT((${sheetName}!D$2:D$9999="INCOME") * (${sheetName}!G$2:G$9999=A${rowNum}) * ${sheetName}!C$2:C$9999)`;
+        formula += ` - SUMPRODUCT((${sheetName}!D$2:D$9999="EXPENSE") * (${sheetName}!G$2:G$9999=A${rowNum}) * ${sheetName}!C$2:C$9999)`;
+        formula += ` - SUMPRODUCT((${sheetName}!D$2:D$9999="TRANSFER") * (${sheetName}!G$2:G$9999=A${rowNum}) * ${sheetName}!C$2:C$9999)`;
+        formula += ` + SUMPRODUCT((${sheetName}!D$2:D$9999="TRANSFER") * (${sheetName}!H$2:H$9999=A${rowNum}) * ${sheetName}!C$2:C$9999)`;
+      }
+    }
+    return [formula];
+  });
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `Wallets!H1`,
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values: [["CurrentBalance"]] },
+  });
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `Wallets!H2:H${values.length + 1}`,
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values },
+  });
 }
 
 export async function initializeSheets() {
@@ -76,21 +118,23 @@ export async function initializeSheets() {
 
   initPromise = (async () => {
     try {
-      await createSheetIfNotExists("Wallets", [
+      let sheetCreated = false;
+      
+      const createdWallet = await createSheetIfNotExists("Wallets", [
+        "ID", "Name", "Type", "InitialBalance", "Color", "CurrencyCode", "CurrencySymbol", "CurrentBalance",
+      ]);
+      if (createdWallet) sheetCreated = true;
+      
+      const createdCat = await createSheetIfNotExists("Categories", [
         "ID",
         "Name",
         "Type",
-        "InitialBalance",
         "Color",
       ]);
-      await createSheetIfNotExists("Categories", [
-        "ID",
-        "Name",
-        "Type",
-        "Color",
-      ]);
+      if (createdCat) sheetCreated = true;
+      
       const currentMonthSheet = getMonthlySheetName();
-      await createSheetIfNotExists(currentMonthSheet, [
+      const createdTransaction = await createSheetIfNotExists(currentMonthSheet, [
         "ID",
         "Date",
         "Amount",
@@ -100,6 +144,35 @@ export async function initializeSheets() {
         "WalletId",
         "ToWalletId",
       ]);
+      if (createdTransaction) sheetCreated = true;
+
+      if (sheetCreated) {
+        await updateWalletFormulas();
+      }
+
+      // Cleanup default "Sheet1" if it exists and we have other sheets
+      const sheets = await getSheets();
+      const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+      const sheet1 = spreadsheet.data.sheets?.find(s => s.properties?.title === "Sheet1");
+      const totalSheets = spreadsheet.data.sheets?.length || 0;
+      
+      if (sheet1 && sheet1.properties?.sheetId !== undefined && totalSheets > 1) {
+        console.log("🧹 Cleaning up default Sheet1");
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          requestBody: {
+            requests: [{ deleteDimension: { range: { sheetId: sheet1.properties.sheetId, dimension: "ROWS", startIndex: 0, endIndex: 1 } } }]
+          }
+        }).catch(() => {}); // ignore errors, we actually want deleteSheet
+        
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          requestBody: {
+            requests: [{ deleteSheet: { sheetId: sheet1.properties.sheetId } }]
+          }
+        }).catch((e) => console.log("Failed to delete Sheet1:", e.message));
+      }
+
     } catch (error: unknown) {
       console.error(
         "❌ Init error:",
@@ -141,9 +214,7 @@ export async function appendSheetData(range: string, values: string[]) {
   return response.data;
 }
 
-// ----------------------------------------------------------------------
-// Helpers for Edit/Delete
-// ----------------------------------------------------------------------
+
 
 export async function findRowIndexById(
   sheetName: string,
@@ -211,28 +282,7 @@ export async function deleteTransactionById(id: string, dateStr: string) {
   }
 }
 
-export async function getAllTransactionSheetData(): Promise<string[][]> {
-  const sheets = await getSheets();
-  const spreadsheet = await sheets.spreadsheets.get({
-    spreadsheetId: SPREADSHEET_ID,
-  });
 
-  const transactionSheets =
-    spreadsheet.data.sheets
-      ?.map((s) => s.properties?.title)
-      .filter(
-        (title): title is string => !!title && title.startsWith("Transactions_")
-      ) || [];
-
-  const allRows: string[][] = [];
-  for (const sheetName of transactionSheets) {
-    const data = await getSheetData(`${sheetName}!A2:H`);
-    if (data) {
-      allRows.push(...data);
-    }
-  }
-  return allRows;
-}
 
 export async function getRangeData(startDate: Date, endDate: Date) {
   const months = eachMonthOfInterval({ start: startDate, end: endDate });

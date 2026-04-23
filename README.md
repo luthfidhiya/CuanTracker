@@ -26,15 +26,23 @@ The tradeoff is that it is best suited for personal/small-scale use (not thousan
 | Feature                               | Description                                                                                                              |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | 📊 **Dashboard Overview**             | Total balance, this-month income vs expense, and a quick bar chart summary                                               |
-| 💳 **Wallet / Card Management**       | Create multiple wallets (Bank, E-Wallet, Cash, Investment) with custom colors                                            |
+| 💳 **Wallet / Card Management**       | Create, edit, and manage multiple wallets (Bank, E-Wallet, Cash, Investment) with custom colors                          |
+| 🌍 **Multi-Currency Support**         | Support for multiple currencies including fiat (IDR, USD) and crypto (BTC, ETH, USDC)                                    |
+| 💱 **Live Crypto Rates**              | Real-time exchange rates for crypto assets relative to USD on the dashboard                                              |
 | 🔍 **Per-Wallet Transaction History** | Click any wallet card to see transactions filtered to that wallet                                                        |
-| 📋 **Global Transaction Log**         | Full history across all wallets with month navigation and type filtering                                                 |
+| 📋 **Global Transaction Log**         | Full history across all wallets with month navigation, type filtering, and wallet source badges                          |
 | ➕ **Income / Expense / Transfer**    | Log all three transaction types; transfers move money between your own wallets                                           |
-| 🏷️ **Category Management**            | Define custom Income and Expense categories; soft-delete preserves historical labels                                     |
+| 🏷️ **Category Management**            | Define and edit custom Income and Expense categories; soft-delete preserves historical labels                            |
 | 🔎 **Search & Filter**                | Search by category or note; filter by All / Income / Expense / Transfer                                                  |
 | ✏️ **Edit & Delete**                  | Inline edit and delete for every transaction, category, and wallet                                                       |
 | 📈 **Analytics Tab**                  | Area chart for cash-flow trends, pie charts for spend-by-category, spend-by-wallet, income-by-wallet over any date range |
+| 🧮 **IDR-Normalized Charts**          | All foreign currency transactions are converted to IDR automatically for accurate financial aggregations in charts       |
 | 🌙 **Premium Dark UI**                | Neon aurora background, glassmorphism cards, smooth animations, fully responsive                                         |
+| 📱 **Swipeable Mobile Navigation**    | Horizontal swipeable carousel for mobile devices with auto-scrolling active tabs and a sticky glassmorphic top header    |
+| 🔗 **Deep-Link Navigation**           | Seamless navigation between components (e.g. clicking a wallet navigates to activity view, clicking chart to analytics)  |
+| 🤫 **Privacy Mode**                   | One-click toggle to blur out all sensitive amounts                                                                       |
+| ⚡ **Lazy Per-Menu Fetching**         | Pages dynamically load only what they need when active, minimizing API calls and maximizing speed                        |
+| 🧮 **Formula-Based Balances**         | Wallet balances are dynamically calculated purely using Google Sheets SUMPRODUCT formulas automatically injected on init |
 
 ---
 
@@ -46,6 +54,7 @@ The tradeoff is that it is best suited for personal/small-scale use (not thousan
 | **UI**             | React 19, Tailwind CSS v4                                                         |
 | **Icons**          | [Lucide React](https://lucide.dev/)                                               |
 | **Charts**         | [Recharts](https://recharts.org/)                                                 |
+| **Animations**     | [Framer Motion](https://www.framer.com/motion/)                                   |
 | **Dialogs / Tabs** | [Radix UI](https://www.radix-ui.com/)                                             |
 | **Auth**           | [NextAuth.js v5](https://authjs.dev/) (Credentials provider, JWT session)         |
 | **Database**       | [Google Sheets API v4](https://developers.google.com/sheets/api) via `googleapis` |
@@ -156,6 +165,9 @@ npm run lint     # Run ESLint
 | C      | Type           | `Bank` / `E-Wallet` / `Cash` / `Investment` |
 | D      | InitialBalance | `5000000`                                   |
 | E      | Color          | `#3b82f6`                                   |
+| F      | CurrencyCode   | `IDR` / `USD` / `BTC` / `ETH` / `USDC`      |
+| G      | CurrencySymbol | `Rp` / `$` / `₿` / `Ξ`                      |
+| H      | CurrentBalance | `=D2 + SUMPRODUCT(...)` (Auto-generated)    |
 
 ### `Categories` sheet
 
@@ -189,7 +201,7 @@ npm run lint     # Run ESLint
 ├── app/
 │   ├── actions.ts              # All server actions (CRUD for wallets, transactions, categories)
 │   ├── layout.tsx              # Root layout with metadata and font
-│   ├── page.tsx                # Entry point — fetches initial data and renders AppShell
+│   ├── page.tsx                # Entry point — providers wrapper and AppShell container
 │   ├── login/
 │   │   ├── page.tsx            # Login page
 │   │   └── actions.ts          # Login server action (NextAuth signIn)
@@ -203,14 +215,18 @@ npm run lint     # Run ESLint
 │   ├── TransactionForm.tsx     # Shared form for add/edit transactions
 │   ├── CategoryList.tsx        # Category management UI with soft-delete support
 │   ├── Monitoring.tsx          # Analytics: area chart + pie charts
+│   ├── PrivacyContext.tsx      # React Context for global show/hide amounts state
+│   ├── RefreshContext.tsx      # React Context to trigger lazy re-fetching across tabs
 │   └── ui/
 │       ├── glass-card.tsx      # Reusable glassmorphism card component
 │       ├── button.tsx          # Styled button
 │       ├── input.tsx           # Styled input
 │       └── confirm-dialog.tsx  # Reusable confirmation dialog
 ├── lib/
-│   ├── google.ts               # Google Sheets API client and CRUD helpers
+│   ├── google.ts               # Google Sheets API client, dynamic formula injector, and CRUD helpers
 │   ├── types.ts                # All TypeScript interfaces
+│   ├── currencies.ts           # Supported currencies and formatters (fiat and crypto)
+│   ├── exchange.ts             # Live exchange rate fetchers via Frankfurter and CoinGecko
 │   └── utils.ts                # cn() utility for class merging
 ├── auth.ts                     # NextAuth configuration (Credentials provider, JWT, route guards)
 └── .env.local                  # Environment variables (not committed to git)

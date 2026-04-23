@@ -1,9 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { DetailedStats, StatItem } from "@/lib/types";
 import { getMonitoringData } from "@/app/actions";
 import { GlassCard } from "./ui/glass-card";
+import { usePrivacy, maskAmount } from "./PrivacyContext";
+import { useRefresh } from "./RefreshContext";
+import { cn } from "@/lib/utils";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -16,23 +19,29 @@ import {
   Cell,
   Legend,
 } from "recharts";
-import { format, subMonths } from "date-fns";
+import { format } from "date-fns";
 import { Loader2, Activity } from "lucide-react";
 
 export function Monitoring() {
+  const { isHidden } = usePrivacy();
+  const { refreshKey } = useRefresh();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DetailedStats | null>(null);
   const [range, setRange] = useState({
-    start: format(subMonths(new Date(), 2), "yyyy-MM-01"),
+    start: format(new Date(), "yyyy-MM-01"),
     end: format(new Date(), "yyyy-MM-dd"),
   });
+  const lastFetchedKey = useRef(refreshKey);
+  const containerRef = useRef<HTMLDivElement>(null);
 
+  // Fetch data when range changes
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
         const result = await getMonitoringData(range.start, range.end);
         setData(result);
+        lastFetchedKey.current = refreshKey;
       } catch (error) {
         console.error(error);
       } finally {
@@ -40,7 +49,41 @@ export function Monitoring() {
       }
     };
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range.start, range.end]);
+
+  // Lazy refetch: only when this component becomes visible AND data is stale
+  useEffect(() => {
+    if (refreshKey <= lastFetchedKey.current) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && refreshKey > lastFetchedKey.current) {
+          lastFetchedKey.current = refreshKey;
+          const fetchData = async () => {
+            setLoading(true);
+            try {
+              const result = await getMonitoringData(range.start, range.end);
+              setData(result);
+            } catch (error) {
+              console.error(error);
+            } finally {
+              setLoading(false);
+            }
+          };
+          fetchData();
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [refreshKey, range.start, range.end]);
 
   const COLORS = [
     "#3b82f6", // Blue
@@ -64,7 +107,7 @@ export function Monitoring() {
             <span className="text-xs text-slate-500 mr-1 opacity-80 capitalize">
               Rp
             </span>
-            {payload[0].value.toLocaleString("id-ID")}
+            {maskAmount(payload[0].value, isHidden, "")}
           </p>
         </div>
       );
@@ -83,7 +126,7 @@ export function Monitoring() {
         <Activity size={14} className="text-blue-500" />
         {title}
       </h3>
-      <div className="flex-1 min-h-[220px] relative">
+      <div className={cn("flex-1 min-h-[220px] relative transition-all duration-500", isHidden ? "blur-md opacity-30 pointer-events-none" : "")}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
@@ -134,7 +177,7 @@ export function Monitoring() {
   );
 
   return (
-    <div className="space-y-6 pb-20 lg:pb-0 lg:bg-slate-950/50 lg:backdrop-blur-xl lg:p-8 lg:rounded-[32px] lg:border lg:border-white/5 lg:shadow-2xl min-h-[500px]">
+    <div ref={containerRef} className="space-y-6 pb-20 lg:pb-0 lg:bg-slate-950/50 lg:backdrop-blur-xl lg:p-8 lg:rounded-[32px] lg:border lg:border-white/5 lg:shadow-2xl min-h-[500px]">
       {/* Header */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
@@ -206,7 +249,7 @@ export function Monitoring() {
                       </span>
                     </div>
                     <p className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                      Rp {data.totalIncome.toLocaleString("id-ID")}
+                      {maskAmount(data.totalIncome, isHidden)}
                     </p>
                   </div>
 
@@ -227,14 +270,14 @@ export function Monitoring() {
                       </span>
                     </div>
                     <p className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                      Rp {data.totalExpense.toLocaleString("id-ID")}
+                      {maskAmount(data.totalExpense, isHidden)}
                     </p>
                   </div>
                 </div>
               </div>
 
               {/* Volume Ratio Bar */}
-              <div className="w-full xl:w-64 space-y-2 flex-shrink-0">
+              <div className="w-full xl:w-64 space-y-2 shrink-0">
                 <div className="flex justify-between text-[10px] font-bold capitalize tracking-widest text-slate-500">
                   <span>Volume Ratio</span>
                   <span>
@@ -270,7 +313,7 @@ export function Monitoring() {
               </div>
             </div>
 
-            <div className="w-full h-[300px] lg:h-[400px] relative z-10">
+            <div className={cn("w-full h-[300px] lg:h-[400px] relative z-10 transition-all duration-500", isHidden ? "blur-md opacity-30 pointer-events-none" : "")}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart
                   data={data.monthlyTrends}

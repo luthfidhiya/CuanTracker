@@ -1,15 +1,16 @@
 "use client";
 
-import React, { useState, useRef } from "react";
-import { addTransaction, editTransaction } from "@/app/actions";
+import React, { useState, useRef, useEffect } from "react";
+import { addTransaction, editTransaction, getWallets, getCategories } from "@/app/actions";
 import { Wallet, Transaction, TransactionType, Category } from "@/lib/types";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Loader2, Calendar } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface TransactionFormProps {
-  wallets: Wallet[];
-  categories: Category[];
+  wallets?: Wallet[];
+  categories?: Category[];
   initialData?: Transaction;
   defaultWalletId?: string;
   hideWalletSelect?: boolean;
@@ -18,19 +19,40 @@ interface TransactionFormProps {
 }
 
 export function TransactionForm({
-  wallets,
-  categories = [],
+  wallets: propWallets,
+  categories: propCategories,
   initialData,
   defaultWalletId,
   hideWalletSelect = false,
   onSuccess,
   onStartSubmit,
 }: TransactionFormProps) {
+  const [wallets, setWallets] = useState<Wallet[]>(propWallets || []);
+  const [categories, setCategories] = useState<Category[]>(propCategories || []);
   const [loading, setLoading] = useState(false);
   const [displayAmount, setDisplayAmount] = useState(
     initialData?.amount.toLocaleString("id-ID") || ""
   );
   const dateInputRef = useRef<HTMLInputElement>(null);
+
+  // Self-fetch wallets/categories if not provided as props
+  useEffect(() => {
+    if (!propWallets || !propCategories) {
+      const fetchMeta = async () => {
+        try {
+          const [w, c] = await Promise.all([
+            propWallets ? Promise.resolve(propWallets) : getWallets(),
+            propCategories ? Promise.resolve(propCategories) : getCategories(),
+          ]);
+          setWallets(w);
+          setCategories(c);
+        } catch (err) {
+          console.error(err);
+        }
+      };
+      fetchMeta();
+    }
+  }, [propWallets, propCategories]);
 
   const [formData, setFormData] = useState({
     amount: initialData?.amount || 0,
@@ -127,11 +149,11 @@ export function TransactionForm({
 
       <div className="space-y-1.5">
         <label className="text-xs font-bold text-white/40 capitalize tracking-widest px-1">
-          Amount (IDR)
+          Amount ({wallets.find(w => w.id === formData.walletId)?.currencyCode || "IDR"})
         </label>
         <div className="relative">
           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 font-bold z-10 pointer-events-none">
-            Rp
+            {wallets.find(w => w.id === formData.walletId)?.currencySymbol || "Rp"}
           </span>
           <Input
             type="text"
@@ -139,7 +161,11 @@ export function TransactionForm({
             placeholder="0"
             value={displayAmount}
             onChange={handleAmountChange}
-            className="pl-12 text-lg font-bold h-14"
+            className={cn(
+              "text-lg font-bold h-14",
+              (wallets.find(w => w.id === formData.walletId)?.currencySymbol || "Rp").length > 3 ? "pl-20" : 
+              (wallets.find(w => w.id === formData.walletId)?.currencySymbol || "Rp").length > 2 ? "pl-16" : "pl-12"
+            )}
           />
         </div>
       </div>
@@ -155,9 +181,22 @@ export function TransactionForm({
                 <select
                   className="w-full h-10 rounded-xl bg-black/20 border border-white/10 px-3 text-sm text-white focus:outline-none appearance-none"
                   value={formData.walletId}
-                  onChange={(e) =>
-                    setFormData({ ...formData, walletId: e.target.value })
-                  }
+                  onChange={(e) => {
+                    const newWalletId = e.target.value;
+                    const newWallet = wallets.find(w => w.id === newWalletId);
+                    const oldToWallet = wallets.find(w => w.id === formData.toWalletId);
+                    
+                    let newToWalletId = formData.toWalletId;
+                    if (formData.type === "TRANSFER" && oldToWallet && oldToWallet.currencyCode !== newWallet?.currencyCode) {
+                      newToWalletId = ""; // reset if currency mismatch
+                    }
+
+                    setFormData({ 
+                      ...formData, 
+                      walletId: newWalletId,
+                      toWalletId: newToWalletId 
+                    });
+                  }}
                 >
                   {wallets.map((w) => (
                     <option key={w.id} value={w.id} className="bg-gray-900">
@@ -183,13 +222,26 @@ export function TransactionForm({
                   <option value="" disabled className="bg-gray-900">
                     Select...
                   </option>
-                  {wallets
-                    .filter((w) => w.id !== formData.walletId)
-                    .map((w) => (
+                  {(() => {
+                    const sourceWallet = wallets.find(w => w.id === formData.walletId);
+                    const targetWallets = wallets.filter(
+                      (w) => w.id !== formData.walletId && w.currencyCode === sourceWallet?.currencyCode
+                    );
+                    
+                    if (targetWallets.length === 0) {
+                      return (
+                        <option value="" disabled className="bg-gray-900 italic text-slate-500">
+                          No other {sourceWallet?.currencyCode} wallets available
+                        </option>
+                      );
+                    }
+                    
+                    return targetWallets.map((w) => (
                       <option key={w.id} value={w.id} className="bg-gray-900">
                         {w.name}
                       </option>
-                    ))}
+                    ));
+                  })()}
                 </select>
               </div>
             </div>

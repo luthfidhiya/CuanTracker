@@ -1,10 +1,13 @@
-import { getDashboardData } from "./actions";
 import { AppShell } from "@/components/AppShell";
+import { PrivacyProvider } from "@/components/PrivacyContext";
+import { RefreshProvider } from "@/components/RefreshContext";
 
-// Ensure fresh data on every request
-export const dynamic = "force-dynamic";
-
-export default async function Home() {
-  const data = await getDashboardData();
-  return <AppShell initialData={data} />;
+export default function Home() {
+  return (
+    <PrivacyProvider>
+      <RefreshProvider>
+        <AppShell />
+      </RefreshProvider>
+    </PrivacyProvider>
+  );
 }

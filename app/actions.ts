@@ -6,13 +6,14 @@ import {
   initializeSheets,
   getMonthlySheetName,
   getRangeData,
-  getAllTransactionSheetData,
   deleteTransactionById,
   updateSheetRow,
   findRowIndexById,
   deleteMultipleRowsByWalletId,
   deleteWalletById,
   deleteSheetRow,
+  updateWalletFormulas,
+  getSheets,
 } from "@/lib/google";
 import {
   Transaction,
@@ -23,8 +24,8 @@ import {
   Category,
   CategoryType,
 } from "@/lib/types";
-import { revalidatePath } from "next/cache";
 import { format, parseISO } from "date-fns";
+import { fetchExchangeRates, convertToUsd } from "@/lib/exchange";
 
 let initialized = false;
 
@@ -35,18 +36,27 @@ async function ensureInitialized() {
   }
 }
 
-export async function getWallets(): Promise<Wallet[]> {
+export async function getWallets(): Promise<(Wallet & { currentBalance: number })[]> {
   await ensureInitialized();
-  const data = await getSheetData("Wallets!A2:E");
+  const data = await getSheetData("Wallets!A2:H");
   if (!data || data.length === 0) return [];
 
-  return data.map((row: string[]) => ({
-    id: row[0],
-    name: row[1],
-    type: row[2],
-    initialBalance: parseFloat(row[3] || "0"),
-    color: row[4],
-  }));
+  return data.map((row: string[]) => {
+    const initialBalance = parseFloat(row[3] || "0");
+    const currencyCode = row[5] || "IDR";
+    const currencySymbol = row[6] || "Rp";
+    const currentBalance = parseFloat(row[7] || row[5] || row[3] || "0");
+    return {
+      id: row[0],
+      name: row[1],
+      type: row[2],
+      initialBalance,
+      color: row[4],
+      currencyCode,
+      currencySymbol,
+      currentBalance,
+    };
+  });
 }
 
 export async function getCategories(): Promise<Category[]> {
@@ -85,6 +95,10 @@ export async function getTransactions(
     .reverse();
 }
 
+export async function getExchangeRates() {
+  return fetchExchangeRates();
+}
+
 export async function addWallet(data: Omit<Wallet, "id">) {
   await ensureInitialized();
   const id = crypto.randomUUID();
@@ -94,9 +108,38 @@ export async function addWallet(data: Omit<Wallet, "id">) {
     data.type,
     data.initialBalance.toString(),
     data.color,
+    data.currencyCode || "IDR",
+    data.currencySymbol || "Rp",
   ];
-  await appendSheetData("Wallets!A:E", row);
-  revalidatePath("/");
+  await appendSheetData("Wallets!A:H", row);
+  await updateWalletFormulas();
+  return { success: true };
+}
+
+export async function editWallet(id: string, data: { name: string; type: string; color: string }) {
+  await ensureInitialized();
+  const rowIndex = await findRowIndexById("Wallets", id);
+  if (!rowIndex) throw new Error("Wallet not found");
+
+  const sheets = await getSheets();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  
+  // Update name and type (Columns B and C)
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `Wallets!B${rowIndex}:C${rowIndex}`,
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values: [[data.name, data.type]] },
+  });
+  
+  // Update color (Column E)
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `Wallets!E${rowIndex}`,
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values: [[data.color]] },
+  });
+  
   return { success: true };
 }
 
@@ -105,7 +148,24 @@ export async function addCategory(data: Omit<Category, "id">) {
   const id = crypto.randomUUID();
   const row = [id, data.name, data.type, data.color];
   await appendSheetData("Categories!A:D", row);
-  revalidatePath("/");
+  return { success: true };
+}
+
+export async function editCategory(id: string, data: { name: string; type: string; color: string }) {
+  await ensureInitialized();
+  const rowIndex = await findRowIndexById("Categories", id);
+  if (!rowIndex) throw new Error("Category not found");
+
+  const sheets = await getSheets();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `Categories!B${rowIndex}:D${rowIndex}`,
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values: [[data.name, data.type, data.color]] },
+  });
+  
   return { success: true };
 }
 
@@ -115,7 +175,6 @@ export async function deleteCategory(id: string) {
   if (!rowIndex) throw new Error("Category not found");
 
   await deleteSheetRow("Categories", rowIndex);
-  revalidatePath("/");
   return { success: true };
 }
 
@@ -133,8 +192,23 @@ export async function addTransaction(data: Omit<Transaction, "id">) {
     data.walletId,
     data.toWalletId || "",
   ];
+  const TRANSACTION_HEADERS = [
+    "ID",
+    "Date",
+    "Amount",
+    "Type",
+    "Category",
+    "Description",
+    "WalletId",
+    "ToWalletId",
+  ];
+  const { createSheetIfNotExists } = await import("@/lib/google");
+  const created = await createSheetIfNotExists(sheetName, TRANSACTION_HEADERS);
+  if (created) {
+    await updateWalletFormulas();
+  }
+
   await appendSheetData(`${sheetName}!A:H`, row);
-  revalidatePath("/");
   return { success: true };
 }
 
@@ -145,7 +219,6 @@ export async function editTransaction(
 ) {
   await ensureInitialized();
 
-  // Note: Only supporting edits within the same month for now to avoid moving sheets complexity
   const sheetName = getMonthlySheetName(new Date(originalDate));
   const rowIndex = await findRowIndexById(sheetName, id);
 
@@ -166,7 +239,6 @@ export async function editTransaction(
 
   // Update specific row A{rowIndex}:H{rowIndex}
   await updateSheetRow(`${sheetName}!A${rowIndex}:H${rowIndex}`, row);
-  revalidatePath("/");
   return { success: true };
 }
 
@@ -174,7 +246,6 @@ export async function deleteTransaction(id: string, date: string) {
   await ensureInitialized();
   try {
     await deleteTransactionById(id, date);
-    revalidatePath("/");
     return { success: true };
   } catch (error) {
     console.error("Delete failed:", error);
@@ -187,7 +258,6 @@ export async function deleteWallet(id: string) {
   try {
     await deleteMultipleRowsByWalletId(id);
     await deleteWalletById(id);
-    revalidatePath("/");
     return { success: true };
   } catch (error) {
     console.error("Delete wallet failed:", error);
@@ -196,69 +266,50 @@ export async function deleteWallet(id: string) {
 }
 
 export async function getDashboardData(): Promise<DashboardStats> {
-  const wallets = await getWallets();
+  const walletsWithBalance = await getWallets();
 
-  // --- 1. Fetch ALL transactions from every month sheet for accurate balances ---
-  const allRawRows = await getAllTransactionSheetData();
-
-  const walletBalances = new Map<string, number>();
-  wallets.forEach((w) => walletBalances.set(w.id, w.initialBalance));
-
-  allRawRows.forEach((row: string[]) => {
-    const type = row[3];
-    const amount = parseFloat(row[2] || "0");
-    const walletId = row[6];
-    const toWalletId = row[7];
-
-    if (type === "INCOME") {
-      walletBalances.set(
-        walletId,
-        (walletBalances.get(walletId) || 0) + amount
-      );
-    } else if (type === "EXPENSE") {
-      walletBalances.set(
-        walletId,
-        (walletBalances.get(walletId) || 0) - amount
-      );
-    } else if (type === "TRANSFER" && toWalletId) {
-      walletBalances.set(
-        walletId,
-        (walletBalances.get(walletId) || 0) - amount
-      );
-      walletBalances.set(
-        toWalletId,
-        (walletBalances.get(toWalletId) || 0) + amount
-      );
-    }
-  });
-
-  const totalBalance = Array.from(walletBalances.values()).reduce(
-    (a, b) => a + b,
-    0
-  );
-
-  // --- 2. Fetch CURRENT MONTH transactions for this-month stats & recent list ---
   const currentMonthTransactions = await getTransactions();
+
+  const exchangeRates = await fetchExchangeRates();
+  
+  const walletMap = new Map(walletsWithBalance.map(w => [w.id, w]));
 
   const incomeThisMonth = currentMonthTransactions
     .filter((t) => t.type === "INCOME")
-    .reduce((s, t) => s + t.amount, 0);
+    .reduce((s, t) => {
+      const wallet = walletMap.get(t.walletId);
+      const amountUsd = convertToUsd(t.amount, wallet?.currencyCode || "IDR", exchangeRates);
+      return s + (amountUsd * exchangeRates.usdToIdr);
+    }, 0);
   const expenseThisMonth = currentMonthTransactions
     .filter((t) => t.type === "EXPENSE")
-    .reduce((s, t) => s + t.amount, 0);
+    .reduce((s, t) => {
+      const wallet = walletMap.get(t.walletId);
+      const amountUsd = convertToUsd(t.amount, wallet?.currencyCode || "IDR", exchangeRates);
+      return s + (amountUsd * exchangeRates.usdToIdr);
+    }, 0);
+
+
+  const recentTransactions = currentMonthTransactions.slice(0, 10);
+
+  let totalBalanceUsd = 0;
+  for (const wallet of walletsWithBalance) {
+    const usdValue = convertToUsd(wallet.currentBalance, wallet.currencyCode, exchangeRates);
+    totalBalanceUsd += usdValue;
+  }
+  const totalBalanceIdr = totalBalanceUsd * exchangeRates.usdToIdr;
 
   const categories = await getCategories();
 
   return {
-    totalBalance,
+    totalBalanceIdr,
+    totalBalanceUsd,
     incomeThisMonth,
     expenseThisMonth,
-    recentTransactions: currentMonthTransactions.slice(0, 10),
-    wallets: wallets.map((w) => ({
-      ...w,
-      currentBalance: walletBalances.get(w.id) || 0,
-    })),
+    recentTransactions,
+    wallets: walletsWithBalance,
     categories,
+    exchangeRates,
   };
 }
 
@@ -273,6 +324,7 @@ export async function getMonitoringData(
   const rawData = await getRangeData(start, end);
   const wallets = await getWallets();
   const walletMap = new Map(wallets.map((w) => [w.id, w]));
+  const exchangeRates = await fetchExchangeRates();
 
   const trends: Map<string, { income: number; expense: number }> = new Map();
   const expenseByCategory: Map<string, number> = new Map();
@@ -287,11 +339,19 @@ export async function getMonitoringData(
     if (!dateStr) return;
 
     const date = parseISO(dateStr);
+    // Filter by exact date range
+    if (date < start || date > end) return;
+
     const monthKey = format(date, "MMM yyyy");
     const type = row[3];
     const category = row[4];
-    const amount = parseFloat(row[2] || "0");
+    const amountRaw = parseFloat(row[2] || "0");
     const walletId = row[6];
+    
+    // Convert amount to IDR
+    const wallet = walletMap.get(walletId);
+    const amountUsd = convertToUsd(amountRaw, wallet?.currencyCode || "IDR", exchangeRates);
+    const amount = amountUsd * exchangeRates.usdToIdr;
 
     // Monthly Trends
     if (!trends.has(monthKey)) trends.set(monthKey, { income: 0, expense: 0 });

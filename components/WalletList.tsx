@@ -22,20 +22,21 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import {
   addWallet,
+  editWallet,
   getTransactions,
   deleteTransaction,
   deleteWallet,
+  getWallets,
+  getCategories,
 } from "@/app/actions";
+import { usePrivacy, maskAmount } from "./PrivacyContext";
+import { useRefresh } from "./RefreshContext";
 
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { TransactionForm } from "./TransactionForm";
 import { ConfirmDialog } from "./ui/confirm-dialog";
-
-interface WalletListProps {
-  wallets: (Wallet & { currentBalance: number })[];
-  categories?: Category[];
-}
+import { CURRENCIES, getCurrency } from "@/lib/currencies";
 
 const COLORS = [
   "#3b82f6", // Blue
@@ -48,12 +49,49 @@ const COLORS = [
   "#e11d48", // Rose
 ];
 
-export function WalletList({ wallets, categories = [] }: WalletListProps) {
+export function WalletList({
+  focusWalletId,
+  onClearFocus,
+}: {
+  focusWalletId?: string | null;
+  onClearFocus?: () => void;
+}) {
+  const { isHidden } = usePrivacy();
+  const { refreshKey, triggerRefresh } = useRefresh();
+  const [wallets, setWallets] = useState<(Wallet & { currentBalance: number })[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [open, setOpen] = useState(false);
+  const [editingWallet, setEditingWallet] = useState<Wallet | null>(null);
   const [isPending, startTransition] = useTransition();
   const [selectedWallet, setSelectedWallet] = useState<
     (Wallet & { currentBalance: number }) | null
   >(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (focusWalletId && wallets.length > 0) {
+      const walletToFocus = wallets.find((w) => w.id === focusWalletId);
+      if (walletToFocus) {
+        setSelectedWallet(walletToFocus);
+      }
+    }
+  }, [focusWalletId, wallets]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const [w, c] = await Promise.all([getWallets(), getCategories()]);
+        setWallets(w);
+        setCategories(c);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [refreshKey]);
   const [confirmDeleteWalletId, setConfirmDeleteWalletId] = useState<
     string | null
   >(null);
@@ -62,6 +100,8 @@ export function WalletList({ wallets, categories = [] }: WalletListProps) {
     type: "Bank",
     initialBalance: "0",
     color: COLORS[0],
+    currencyCode: "IDR",
+    currencySymbol: "Rp",
   });
 
   const handleDeleteWallet = () => {
@@ -75,6 +115,8 @@ export function WalletList({ wallets, categories = [] }: WalletListProps) {
         if (selectedWallet?.id === targetId) {
           setSelectedWallet(null);
         }
+        await new Promise((r) => setTimeout(r, 600));
+        triggerRefresh();
       } catch (error) {
         console.error("Failed to delete wallet", error);
       }
@@ -90,16 +132,42 @@ export function WalletList({ wallets, categories = [] }: WalletListProps) {
         await addWallet({
           name: formData.name,
           type: formData.type,
-          initialBalance:
-            parseFloat(formData.initialBalance.replace(/\D/g, "")) || 0,
+          initialBalance: parseFloat(formData.initialBalance.replace(/\D/g, "")) || 0,
           color: formData.color,
+          currencyCode: formData.currencyCode,
+          currencySymbol: formData.currencySymbol,
         });
         setFormData({
           name: "",
           type: "Bank",
           initialBalance: "0",
           color: COLORS[0],
+          currencyCode: "IDR",
+          currencySymbol: "Rp",
         });
+      } catch (error) {
+        console.error(error);
+      }
+    });
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingWallet) return;
+    
+    const targetId = editingWallet.id;
+    const updateData = {
+      name: editingWallet.name,
+      type: editingWallet.type,
+      color: editingWallet.color,
+    };
+    
+    setEditingWallet(null);
+    startTransition(async () => {
+      try {
+        await editWallet(targetId, updateData);
+        await new Promise((r) => setTimeout(r, 600));
+        triggerRefresh();
       } catch (error) {
         console.error(error);
       }
@@ -121,8 +189,22 @@ export function WalletList({ wallets, categories = [] }: WalletListProps) {
         wallet={selectedWallet}
         wallets={wallets}
         categories={categories}
-        onBack={() => setSelectedWallet(null)}
+        onBack={() => {
+          setSelectedWallet(null);
+          if (onClearFocus) onClearFocus();
+        }}
       />
+    );
+  }
+
+  if (loading && wallets.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[400px]">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="animate-spin text-blue-400/50" size={36} />
+          <p className="text-xs capitalize font-bold tracking-[0.2em] text-blue-400/40">Loading Wallets...</p>
+        </div>
+      </div>
     );
   }
 
@@ -215,17 +297,45 @@ export function WalletList({ wallets, categories = [] }: WalletListProps) {
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-400 capitalize tracking-widest px-1">
-                    Initial Balance (IDR)
+                    Currency
+                  </label>
+                  <div className="relative">
+                    <select
+                      className="w-full h-10 rounded-xl bg-slate-900/50 border border-white/10 px-3 text-sm text-white focus:outline-none appearance-none cursor-pointer"
+                      value={formData.currencyCode}
+                      onChange={(e) => {
+                        const cur = getCurrency(e.target.value);
+                        setFormData({ ...formData, currencyCode: cur.code, currencySymbol: cur.symbol });
+                      }}
+                    >
+                      {CURRENCIES.map(c => (
+                        <option key={c.code} value={c.code} className="bg-slate-900">
+                          {c.symbol} — {c.name} ({c.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 capitalize tracking-widest px-1">
+                    Initial Balance ({formData.currencyCode})
                   </label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 font-bold z-10 pointer-events-none">
-                      Rp
+                      {formData.currencySymbol}
                     </span>
                     <Input
                       required
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="0"
                       value={formData.initialBalance}
                       onChange={handleBalanceChange}
-                      className="pl-12 bg-slate-900/50"
+                      className={cn(
+                        "h-12 bg-slate-900/50 border-white/10 text-white font-bold",
+                        formData.currencySymbol.length > 3 ? "pl-20" : formData.currencySymbol.length > 2 ? "pl-16" : "pl-12"
+                      )}
                     />
                   </div>
                 </div>
@@ -316,6 +426,16 @@ export function WalletList({ wallets, categories = [] }: WalletListProps) {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      setEditingWallet(wallet);
+                    }}
+                    disabled={isPending}
+                    className="h-8 w-8 flex items-center justify-center rounded-lg text-blue-400/50 hover:text-blue-400 hover:bg-blue-400/10 transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100 cursor-pointer"
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setConfirmDeleteWalletId(wallet.id);
                     }}
                     disabled={isPending}
@@ -338,11 +458,15 @@ export function WalletList({ wallets, categories = [] }: WalletListProps) {
                   </span>
                   <Info size={12} className="text-slate-500" />
                 </div>
-                <p className="text-3xl font-black text-white tracking-widest shadow-black drop-shadow-md">
-                  <span className="text-sm mr-1.5 opacity-50 font-medium">
-                    Rp
-                  </span>
-                  {wallet.currentBalance.toLocaleString("id-ID")}
+                <p className="text-3xl font-black text-white tracking-widest shadow-black drop-shadow-md transition-all">
+                  {isHidden ? (
+                    <>••••••</>
+                  ) : (
+                    <>
+                      <span className="text-sm mr-1.5 opacity-50 font-medium">{wallet.currencySymbol}</span>
+                      {wallet.currentBalance.toLocaleString("id-ID")}
+                    </>
+                  )}
                 </p>
               </div>
 
@@ -376,6 +500,94 @@ export function WalletList({ wallets, categories = [] }: WalletListProps) {
         variant="danger"
       />
 
+      <Dialog.Root open={!!editingWallet} onOpenChange={(open) => !open && setEditingWallet(null)}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/80 backdrop-blur-md z-60 animate-in fade-in" />
+          <Dialog.Content className="fixed left-[50%] top-[50%] w-[90vw] max-w-[400px] translate-x-[-50%] translate-y-[-50%] rounded-[32px] bg-slate-950/90 border border-white/10 p-8 shadow-2xl z-70 animate-in zoom-in-95 focus:outline-none">
+            <div className="mb-6">
+              <Dialog.Title className="text-2xl font-black text-white tracking-tight">
+                Edit Wallet
+              </Dialog.Title>
+              <p className="text-blue-400/60 text-xs capitalize font-bold tracking-widest mt-0">
+                Update wallet details
+              </p>
+            </div>
+            {editingWallet && (
+              <form onSubmit={handleEditSubmit} className="space-y-5">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 capitalize tracking-widest px-1">
+                    Wallet Name
+                  </label>
+                  <Input
+                    required
+                    placeholder="e.g. Main Bank"
+                    value={editingWallet.name}
+                    onChange={(e) =>
+                      setEditingWallet({ ...editingWallet, name: e.target.value })
+                    }
+                    className="bg-slate-900/50"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 capitalize tracking-widest px-1">
+                    Type
+                  </label>
+                  <div className="relative">
+                    <select
+                      className="w-full h-10 rounded-xl bg-slate-900/50 border border-white/10 px-3 text-sm text-white focus:outline-none appearance-none cursor-pointer"
+                      value={editingWallet.type}
+                      onChange={(e) =>
+                        setEditingWallet({ ...editingWallet, type: e.target.value })
+                      }
+                    >
+                      <option value="Bank" className="bg-slate-900">Bank</option>
+                      <option value="E-Wallet" className="bg-slate-900">E-Wallet</option>
+                      <option value="Cash" className="bg-slate-900">Cash</option>
+                      <option value="Investment" className="bg-slate-900">Investment</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-slate-400 capitalize tracking-widest px-1">
+                    Color
+                  </label>
+                  <div className="flex gap-2.5 flex-wrap px-1">
+                    {COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setEditingWallet({ ...editingWallet, color: c })}
+                        className={cn(
+                          "h-8 w-8 rounded-full transition-all duration-300 relative cursor-pointer",
+                          editingWallet.color === c
+                            ? "scale-110 shadow-[0_0_15px_currentColor]"
+                            : "opacity-50 hover:opacity-100 hover:scale-105"
+                        )}
+                        style={{ backgroundColor: c, color: c }}
+                      >
+                        {editingWallet.color === c && (
+                          <span className="absolute inset-0 rounded-full border-2 border-white pointer-events-none"></span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  disabled={isPending}
+                  className="w-full h-14 rounded-2xl mt-4 font-bold bg-linear-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400"
+                >
+                  {isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              </form>
+            )}
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
     </div>
   );
 }
@@ -393,6 +605,7 @@ function WalletDetail({
   categories: Category[];
   onBack: () => void;
 }) {
+  const { isHidden } = usePrivacy();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
@@ -416,7 +629,8 @@ function WalletDetail({
     startTransition(async () => {
       try {
         await deleteTransaction(targetId, targetDate);
-        await fetchTransactions(); // refresh local state
+        await new Promise((r) => setTimeout(r, 600));
+        await fetchTransactions();
       } catch {
         console.error("Failed to delete transaction");
       }
@@ -431,7 +645,7 @@ function WalletDetail({
       // Filter: this wallet's outgoing/incoming + transfers involving this wallet
       setTransactions(
         all.filter(
-          (t) => t.walletId === wallet.id || t.toWalletId === wallet.id
+          (t: Transaction) => t.walletId === wallet.id || t.toWalletId === wallet.id
         )
       );
     } catch (err) {
@@ -484,11 +698,10 @@ function WalletDetail({
                 {wallet.name}
               </h2>
               <p
-                className="text-xs font-bold capitalize tracking-[0.2em] mt-0.5"
+                className="text-xs font-bold capitalize tracking-[0.2em] mt-0.5 transition-all"
                 style={{ color: `${wallet.color}99` }}
               >
-                {wallet.type} · Rp{" "}
-                {wallet.currentBalance.toLocaleString("id-ID")}
+                {wallet.type} · {maskAmount(wallet.currentBalance, isHidden, wallet.currencySymbol + " ")}
               </p>
             </div>
           </div>
@@ -535,7 +748,9 @@ function WalletDetail({
                   setLoading(true);
                 }}
                 onSuccess={() => {
-                  fetchTransactions();
+                  setTimeout(async () => {
+                    await fetchTransactions();
+                  }, 600);
                 }}
               />
             </Dialog.Content>
@@ -642,7 +857,7 @@ function WalletDetail({
                       amountColor
                     )}
                   >
-                    {amountSign}Rp {t.amount.toLocaleString("id-ID")}
+                    {maskAmount(t.amount, isHidden, amountSign + wallet.currencySymbol + " ")}
                   </p>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
@@ -706,9 +921,11 @@ function WalletDetail({
                   setLoading(true);
                 }}
                 onSuccess={() => {
-                  startTransition(async () => {
-                    await fetchTransactions();
-                  });
+                  setTimeout(() => {
+                    startTransition(async () => {
+                      await fetchTransactions();
+                    });
+                  }, 600);
                 }}
               />
             )}

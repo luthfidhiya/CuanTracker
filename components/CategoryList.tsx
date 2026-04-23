@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useState, useEffect, useTransition } from "react";
 import { Category } from "@/lib/types";
 import { GlassCard } from "./ui/glass-card";
 import { Plus, Tag, Trash2, LayoutGrid, Loader2 } from "lucide-react";
@@ -8,36 +8,25 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { ConfirmDialog } from "./ui/confirm-dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { addCategory, deleteCategory } from "@/app/actions";
+import { addCategory, deleteCategory, getCategories, editCategory } from "@/app/actions";
+import { Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-interface CategoryListProps {
-  categories: Category[];
-}
+import { useRefresh } from "./RefreshContext";
 
 const COLORS = [
-  "#ef4444", // Red
-  "#f97316", // Orange
-  "#f59e0b", // Amber
-  "#eab308", // Yellow
-  "#84cc16", // Lime
-  "#22c55e", // Green
-  "#10b981", // Emerald
-  "#14b8a6", // Teal
-  "#06b6d4", // Cyan
-  "#0ea5e9", // Light Blue
-  "#3b82f6", // Blue
-  "#6366f1", // Indigo
-  "#8b5cf6", // Violet
-  "#a855f7", // Purple
-  "#d946ef", // Fuchsia
-  "#ec4899", // Pink
-  "#f43f5e", // Rose
-  "#64748b", // Slate
+  "#ef4444", "#f97316", "#f59e0b", "#eab308",
+  "#84cc16", "#22c55e", "#10b981", "#14b8a6",
+  "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1",
+  "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
+  "#f43f5e", "#64748b",
 ];
 
-export function CategoryList({ categories }: CategoryListProps) {
+export function CategoryList() {
+  const { refreshKey } = useRefresh();
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [isPending, startTransition] = useTransition();
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -45,6 +34,21 @@ export function CategoryList({ categories }: CategoryListProps) {
     type: "EXPENSE",
     color: COLORS[0],
   });
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const c = await getCategories();
+        setCategories(c);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [refreshKey]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,6 +66,34 @@ export function CategoryList({ categories }: CategoryListProps) {
           type: "EXPENSE",
           color: COLORS[0],
         });
+        // small delay before fetching
+        await new Promise(r => setTimeout(r, 600));
+        const c = await getCategories();
+        setCategories(c);
+      } catch (error) {
+        console.error(error);
+      }
+    });
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCategory) return;
+    
+    const targetId = editingCategory.id;
+    const updateData = {
+      name: editingCategory.name,
+      type: editingCategory.type,
+      color: editingCategory.color,
+    };
+    
+    setEditingCategory(null);
+    startTransition(async () => {
+      try {
+        await editCategory(targetId, updateData);
+        await new Promise(r => setTimeout(r, 600));
+        const c = await getCategories();
+        setCategories(c);
       } catch (error) {
         console.error(error);
       }
@@ -88,6 +120,17 @@ export function CategoryList({ categories }: CategoryListProps) {
   const expenseCategories = categories
     .filter((c) => c.type === "EXPENSE")
     .filter((c) => !c.name.startsWith("DELETED_"));
+
+  if (loading && categories.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[400px]">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="animate-spin text-blue-400/50" size={36} />
+          <p className="text-xs capitalize font-bold tracking-[0.2em] text-blue-400/40">Loading Categories...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 lg:bg-slate-950/50 lg:backdrop-blur-xl lg:p-8 lg:rounded-[32px] lg:border lg:border-white/5 lg:shadow-2xl min-h-[500px] relative">
@@ -260,16 +303,28 @@ export function CategoryList({ categories }: CategoryListProps) {
                     >
                       <Tag size={20} />
                     </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setConfirmDeleteId(c.id);
-                      }}
-                      disabled={isPending}
-                      className="h-8 w-8 flex items-center justify-center rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-400/10 transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100 cursor-pointer"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingCategory(c);
+                        }}
+                        disabled={isPending}
+                        className="h-8 w-8 flex items-center justify-center rounded-lg text-blue-400/50 hover:text-blue-400 hover:bg-blue-400/10 transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100 cursor-pointer"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmDeleteId(c.id);
+                        }}
+                        disabled={isPending}
+                        className="h-8 w-8 flex items-center justify-center rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-400/10 transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100 cursor-pointer"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                   <div>
                     <h3 className="text-lg font-bold text-white tracking-tight leading-none line-clamp-1">
@@ -307,16 +362,28 @@ export function CategoryList({ categories }: CategoryListProps) {
                     >
                       <Tag size={20} />
                     </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setConfirmDeleteId(c.id);
-                      }}
-                      disabled={isPending}
-                      className="h-8 w-8 flex items-center justify-center rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-400/10 transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100 cursor-pointer"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingCategory(c);
+                        }}
+                        disabled={isPending}
+                        className="h-8 w-8 flex items-center justify-center rounded-lg text-blue-400/50 hover:text-blue-400 hover:bg-blue-400/10 transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100 cursor-pointer"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmDeleteId(c.id);
+                        }}
+                        disabled={isPending}
+                        className="h-8 w-8 flex items-center justify-center rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-400/10 transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100 cursor-pointer"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                   <div>
                     <h3 className="text-lg font-bold text-white tracking-tight leading-none line-clamp-1">
@@ -329,6 +396,92 @@ export function CategoryList({ categories }: CategoryListProps) {
           </div>
         </div>
       )}
+
+      {/* Edit Category Dialog */}
+      <Dialog.Root open={!!editingCategory} onOpenChange={(open) => !open && setEditingCategory(null)}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/80 backdrop-blur-md z-60 animate-in fade-in" />
+          <Dialog.Content className="fixed left-[50%] top-[50%] w-[90vw] max-w-[400px] translate-x-[-50%] translate-y-[-50%] rounded-[32px] bg-slate-950/90 border border-white/10 p-8 shadow-2xl z-70 animate-in zoom-in-95 focus:outline-none">
+            <div className="mb-6">
+              <Dialog.Title className="text-2xl font-black text-white tracking-tight">
+                Edit Category
+              </Dialog.Title>
+              <p className="text-cyan-400/60 text-xs capitalize font-bold tracking-widest mt-0">
+                Update tag details
+              </p>
+            </div>
+            {editingCategory && (
+              <form onSubmit={handleEditSubmit} className="space-y-5">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 capitalize tracking-widest px-1">
+                    Category Name
+                  </label>
+                  <Input
+                    required
+                    placeholder="e.g. Groceries"
+                    className="bg-slate-900/50"
+                    value={editingCategory.name}
+                    onChange={(e) =>
+                      setEditingCategory({ ...editingCategory, name: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 capitalize tracking-widest px-1">
+                    Type
+                  </label>
+                  <div className="relative">
+                    <select
+                      className="w-full h-10 rounded-xl bg-slate-900/50 border border-white/10 px-3 text-sm text-white focus:outline-none appearance-none opacity-50 cursor-not-allowed"
+                      value={editingCategory.type}
+                      disabled
+                    >
+                      <option value="EXPENSE" className="bg-slate-900">Expense</option>
+                      <option value="INCOME" className="bg-slate-900">Income</option>
+                    </select>
+                  </div>
+                  <p className="text-[10px] text-slate-500 px-1">Type cannot be changed after creation.</p>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-slate-400 capitalize tracking-widest px-1">
+                    Color Profile
+                  </label>
+                  <div className="flex gap-2.5 flex-wrap px-1">
+                    {COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setEditingCategory({ ...editingCategory, color: c })}
+                        className={cn(
+                          "h-8 w-8 rounded-full transition-all duration-300 relative cursor-pointer",
+                          editingCategory.color === c
+                            ? "scale-110 shadow-[0_0_15px_currentColor]"
+                            : "opacity-50 hover:opacity-100 hover:scale-105"
+                        )}
+                        style={{ backgroundColor: c, color: c }}
+                      >
+                        {editingCategory.color === c && (
+                          <span className="absolute inset-0 rounded-full border-2 border-white pointer-events-none"></span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  disabled={isPending}
+                  className="w-full h-14 rounded-2xl mt-4 font-bold bg-linear-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400"
+                >
+                  {isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              </form>
+            )}
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }
