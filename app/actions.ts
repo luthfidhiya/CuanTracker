@@ -45,7 +45,7 @@ export async function getWallets(): Promise<(Wallet & { currentBalance: number }
     const initialBalance = parseFloat(row[3] || "0");
     const currencyCode = row[5] || "IDR";
     const currencySymbol = row[6] || "Rp";
-    const currentBalance = parseFloat(row[7] || row[5] || row[3] || "0");
+    const currentBalance = parseFloat(row[7] || "0") || parseFloat(row[3] || "0");
     return {
       id: row[0],
       name: row[1],
@@ -266,6 +266,7 @@ export async function deleteWallet(id: string) {
 }
 
 export async function getDashboardData(): Promise<DashboardStats> {
+  await ensureInitialized();
   const walletsWithBalance = await getWallets();
 
   const currentMonthTransactions = await getTransactions();
