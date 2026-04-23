@@ -239,7 +239,7 @@ export function Dashboard({
                       ) : (
                         <>
                           <span className="text-xs text-slate-500 mr-1 font-medium">{wallet.currencySymbol}</span>
-                          {wallet.currentBalance.toLocaleString("id-ID")}
+                          {wallet.currentBalance.toLocaleString("id-ID", { maximumFractionDigits: 10 })}
                         </>
                       )}
                     </span>

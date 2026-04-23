@@ -29,6 +29,15 @@ import { fetchExchangeRates, convertToUsd } from "@/lib/exchange";
 
 let initialized = false;
 
+function parseSheetDate(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "number") {
+    const date = new Date(Math.round((value - 25569) * 86400 * 1000));
+    return date.toISOString().split("T")[0];
+  }
+  return String(value);
+}
+
 async function ensureInitialized() {
   if (!initialized) {
     await initializeSheets();
@@ -36,24 +45,27 @@ async function ensureInitialized() {
   }
 }
 
-export async function getWallets(): Promise<(Wallet & { currentBalance: number })[]> {
+export async function getWallets(): Promise<
+  (Wallet & { currentBalance: number })[]
+> {
   await ensureInitialized();
   const data = await getSheetData("Wallets!A2:H");
   if (!data || data.length === 0) return [];
 
   return data.map((row: string[]) => {
-    const initialBalance = parseFloat(row[3] || "0");
+    const initialBalance = parseFloat(String(row[3] || "0"));
     const currencyCode = row[5] || "IDR";
     const currencySymbol = row[6] || "Rp";
-    const currentBalance = parseFloat(row[7] || "0") || parseFloat(row[3] || "0");
+    const currentBalance =
+      parseFloat(String(row[7] || "0")) || parseFloat(String(row[3] || "0"));
     return {
-      id: row[0],
-      name: row[1],
-      type: row[2],
+      id: String(row[0]),
+      name: String(row[1]),
+      type: String(row[2]),
       initialBalance,
-      color: row[4],
-      currencyCode,
-      currencySymbol,
+      color: String(row[4]),
+      currencyCode: String(currencyCode),
+      currencySymbol: String(currencySymbol),
       currentBalance,
     };
   });
@@ -64,11 +76,11 @@ export async function getCategories(): Promise<Category[]> {
   const data = await getSheetData("Categories!A2:D");
   if (!data || data.length === 0) return [];
 
-  return data.map((row: string[]) => ({
-    id: row[0],
-    name: row[1],
-    type: row[2] as CategoryType,
-    color: row[3],
+  return data.map((row: unknown[]) => ({
+    id: String(row[0]),
+    name: String(row[1]),
+    type: String(row[2]) as CategoryType,
+    color: String(row[3]),
   }));
 }
 
@@ -82,15 +94,15 @@ export async function getTransactions(
   if (!data || data.length === 0) return [];
 
   return data
-    .map((row: string[]) => ({
-      id: row[0],
-      date: row[1],
-      amount: parseFloat(row[2] || "0"),
-      type: row[3] as TransactionType,
-      category: row[4],
-      description: row[5],
-      walletId: row[6],
-      toWalletId: row[7],
+    .map((row: unknown[]) => ({
+      id: String(row[0]),
+      date: parseSheetDate(row[1]),
+      amount: parseFloat(String(row[2] || "0")),
+      type: String(row[3]) as TransactionType,
+      category: String(row[4]),
+      description: String(row[5]),
+      walletId: String(row[6]),
+      toWalletId: row[7] ? String(row[7]) : undefined,
     }))
     .reverse();
 }
@@ -102,11 +114,11 @@ export async function getExchangeRates() {
 export async function addWallet(data: Omit<Wallet, "id">) {
   await ensureInitialized();
   const id = crypto.randomUUID();
-  const row = [
+  const row: (string | number)[] = [
     id,
     data.name,
     data.type,
-    data.initialBalance.toString(),
+    data.initialBalance,
     data.color,
     data.currencyCode || "IDR",
     data.currencySymbol || "Rp",
@@ -116,14 +128,17 @@ export async function addWallet(data: Omit<Wallet, "id">) {
   return { success: true };
 }
 
-export async function editWallet(id: string, data: { name: string; type: string; color: string }) {
+export async function editWallet(
+  id: string,
+  data: { name: string; type: string; color: string }
+) {
   await ensureInitialized();
   const rowIndex = await findRowIndexById("Wallets", id);
   if (!rowIndex) throw new Error("Wallet not found");
 
   const sheets = await getSheets();
   const spreadsheetId = process.env.SPREADSHEET_ID;
-  
+
   // Update name and type (Columns B and C)
   await sheets.spreadsheets.values.update({
     spreadsheetId,
@@ -131,7 +146,7 @@ export async function editWallet(id: string, data: { name: string; type: string;
     valueInputOption: "USER_ENTERED",
     requestBody: { values: [[data.name, data.type]] },
   });
-  
+
   // Update color (Column E)
   await sheets.spreadsheets.values.update({
     spreadsheetId,
@@ -139,7 +154,7 @@ export async function editWallet(id: string, data: { name: string; type: string;
     valueInputOption: "USER_ENTERED",
     requestBody: { values: [[data.color]] },
   });
-  
+
   return { success: true };
 }
 
@@ -151,21 +166,24 @@ export async function addCategory(data: Omit<Category, "id">) {
   return { success: true };
 }
 
-export async function editCategory(id: string, data: { name: string; type: string; color: string }) {
+export async function editCategory(
+  id: string,
+  data: { name: string; type: string; color: string }
+) {
   await ensureInitialized();
   const rowIndex = await findRowIndexById("Categories", id);
   if (!rowIndex) throw new Error("Category not found");
 
   const sheets = await getSheets();
   const spreadsheetId = process.env.SPREADSHEET_ID;
-  
+
   await sheets.spreadsheets.values.update({
     spreadsheetId,
     range: `Categories!B${rowIndex}:D${rowIndex}`,
     valueInputOption: "USER_ENTERED",
     requestBody: { values: [[data.name, data.type, data.color]] },
   });
-  
+
   return { success: true };
 }
 
@@ -182,10 +200,10 @@ export async function addTransaction(data: Omit<Transaction, "id">) {
   await ensureInitialized();
   const id = crypto.randomUUID();
   const sheetName = getMonthlySheetName(new Date(data.date));
-  const row = [
+  const row: (string | number)[] = [
     id,
     data.date,
-    data.amount.toString(),
+    data.amount,
     data.type,
     data.category,
     data.description,
@@ -226,10 +244,10 @@ export async function editTransaction(
     throw new Error("Transaction not found");
   }
 
-  const row = [
+  const row: (string | number)[] = [
     id,
     data.date || originalDate,
-    data.amount?.toString() || "0",
+    data.amount ?? 0,
     data.type || "EXPENSE",
     data.category || "",
     data.description || "",
@@ -272,30 +290,41 @@ export async function getDashboardData(): Promise<DashboardStats> {
   const currentMonthTransactions = await getTransactions();
 
   const exchangeRates = await fetchExchangeRates();
-  
-  const walletMap = new Map(walletsWithBalance.map(w => [w.id, w]));
+
+  const walletMap = new Map(walletsWithBalance.map((w) => [w.id, w]));
 
   const incomeThisMonth = currentMonthTransactions
     .filter((t) => t.type === "INCOME")
     .reduce((s, t) => {
       const wallet = walletMap.get(t.walletId);
-      const amountUsd = convertToUsd(t.amount, wallet?.currencyCode || "IDR", exchangeRates);
-      return s + (amountUsd * exchangeRates.usdToIdr);
+      const amountUsd = convertToUsd(
+        t.amount,
+        wallet?.currencyCode || "IDR",
+        exchangeRates
+      );
+      return s + amountUsd * exchangeRates.usdToIdr;
     }, 0);
   const expenseThisMonth = currentMonthTransactions
     .filter((t) => t.type === "EXPENSE")
     .reduce((s, t) => {
       const wallet = walletMap.get(t.walletId);
-      const amountUsd = convertToUsd(t.amount, wallet?.currencyCode || "IDR", exchangeRates);
-      return s + (amountUsd * exchangeRates.usdToIdr);
+      const amountUsd = convertToUsd(
+        t.amount,
+        wallet?.currencyCode || "IDR",
+        exchangeRates
+      );
+      return s + amountUsd * exchangeRates.usdToIdr;
     }, 0);
-
 
   const recentTransactions = currentMonthTransactions.slice(0, 10);
 
   let totalBalanceUsd = 0;
   for (const wallet of walletsWithBalance) {
-    const usdValue = convertToUsd(wallet.currentBalance, wallet.currencyCode, exchangeRates);
+    const usdValue = convertToUsd(
+      wallet.currentBalance,
+      wallet.currencyCode,
+      exchangeRates
+    );
     totalBalanceUsd += usdValue;
   }
   const totalBalanceIdr = totalBalanceUsd * exchangeRates.usdToIdr;
@@ -335,8 +364,8 @@ export async function getMonitoringData(
   let totalIncome = 0;
   let totalExpense = 0;
 
-  rawData.forEach((row: string[]) => {
-    const dateStr = row[1];
+  rawData.forEach((row: unknown[]) => {
+    const dateStr = parseSheetDate(row[1]);
     if (!dateStr) return;
 
     const date = parseISO(dateStr);
@@ -344,14 +373,18 @@ export async function getMonitoringData(
     if (date < start || date > end) return;
 
     const monthKey = format(date, "MMM yyyy");
-    const type = row[3];
-    const category = row[4];
-    const amountRaw = parseFloat(row[2] || "0");
-    const walletId = row[6];
-    
+    const type = String(row[3]);
+    const category = String(row[4]);
+    const amountRaw = parseFloat(String(row[2] || "0"));
+    const walletId = String(row[6]);
+
     // Convert amount to IDR
     const wallet = walletMap.get(walletId);
-    const amountUsd = convertToUsd(amountRaw, wallet?.currencyCode || "IDR", exchangeRates);
+    const amountUsd = convertToUsd(
+      amountRaw,
+      wallet?.currencyCode || "IDR",
+      exchangeRates
+    );
     const amount = amountUsd * exchangeRates.usdToIdr;
 
     // Monthly Trends

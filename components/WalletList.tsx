@@ -63,16 +63,14 @@ export function WalletList({
   const [open, setOpen] = useState(false);
   const [editingWallet, setEditingWallet] = useState<Wallet | null>(null);
   const [isPending, startTransition] = useTransition();
-  const [selectedWallet, setSelectedWallet] = useState<
-    (Wallet & { currentBalance: number }) | null
-  >(null);
+  const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (focusWalletId && wallets.length > 0) {
       const walletToFocus = wallets.find((w) => w.id === focusWalletId);
       if (walletToFocus) {
-        setSelectedWallet(walletToFocus);
+        setSelectedWalletId(walletToFocus.id);
       }
     }
   }, [focusWalletId, wallets]);
@@ -112,8 +110,8 @@ export function WalletList({
     startTransition(async () => {
       try {
         await deleteWallet(targetId);
-        if (selectedWallet?.id === targetId) {
-          setSelectedWallet(null);
+        if (selectedWalletId === targetId) {
+          setSelectedWalletId(null);
         }
         await new Promise((r) => setTimeout(r, 600));
         triggerRefresh();
@@ -132,7 +130,7 @@ export function WalletList({
         await addWallet({
           name: formData.name,
           type: formData.type,
-          initialBalance: parseFloat(formData.initialBalance.replace(/\D/g, "")) || 0,
+          initialBalance: parseFloat(formData.initialBalance.replace(/\./g, "").replace(/,/g, ".")) || 0,
           color: formData.color,
           currencyCode: formData.currencyCode,
           currencySymbol: formData.currencySymbol,
@@ -175,13 +173,19 @@ export function WalletList({
   };
 
   const handleBalanceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, "");
-    const numValue = parseInt(value) || 0;
+    let value = e.target.value.replace(/[^\d,]/g, "");
+    const parts = value.split(",");
+    if (parts.length > 2) value = parts[0] + "," + parts.slice(1).join("");
+    const intPart = parts[0];
+    const decPart = parts.length > 1 ? "," + parts[1] : "";
+    const formattedInt = intPart ? parseInt(intPart, 10).toLocaleString("id-ID") : "";
     setFormData({
       ...formData,
-      initialBalance: numValue.toLocaleString("id-ID"),
+      initialBalance: value ? formattedInt + decPart : "",
     });
   };
+
+  const selectedWallet = wallets.find(w => w.id === selectedWalletId) || null;
 
   if (selectedWallet) {
     return (
@@ -190,9 +194,11 @@ export function WalletList({
         wallets={wallets}
         categories={categories}
         onBack={() => {
-          setSelectedWallet(null);
+          triggerRefresh();
+          setSelectedWalletId(null);
           if (onClearFocus) onClearFocus();
         }}
+        onTransactionChange={triggerRefresh}
       />
     );
   }
@@ -383,7 +389,7 @@ export function WalletList({
           {wallets.map((wallet) => (
             <GlassCard
               key={wallet.id}
-              onClick={() => setSelectedWallet(wallet)}
+              onClick={() => setSelectedWalletId(wallet.id)}
               className="p-6 relative overflow-hidden group border-white/10 bg-slate-900/60 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_60px_rgba(0,0,0,0.4)] cursor-pointer h-48 flex flex-col justify-between"
             >
               {/* Holographic / Gradient Card Background */}
@@ -464,7 +470,7 @@ export function WalletList({
                   ) : (
                     <>
                       <span className="text-sm mr-1.5 opacity-50 font-medium">{wallet.currencySymbol}</span>
-                      {wallet.currentBalance.toLocaleString("id-ID")}
+                      {wallet.currentBalance.toLocaleString("id-ID", { maximumFractionDigits: 10 })}
                     </>
                   )}
                 </p>
@@ -599,11 +605,13 @@ function WalletDetail({
   wallets,
   categories,
   onBack,
+  onTransactionChange,
 }: {
   wallet: Wallet & { currentBalance: number };
   wallets: (Wallet & { currentBalance: number })[];
   categories: Category[];
   onBack: () => void;
+  onTransactionChange?: () => void;
 }) {
   const { isHidden } = usePrivacy();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -631,6 +639,7 @@ function WalletDetail({
         await deleteTransaction(targetId, targetDate);
         await new Promise((r) => setTimeout(r, 600));
         await fetchTransactions();
+        if (onTransactionChange) onTransactionChange();
       } catch {
         console.error("Failed to delete transaction");
       }
@@ -750,6 +759,7 @@ function WalletDetail({
                 onSuccess={() => {
                   setTimeout(async () => {
                     await fetchTransactions();
+                    if (onTransactionChange) onTransactionChange();
                   }, 600);
                 }}
               />
@@ -859,7 +869,7 @@ function WalletDetail({
                   >
                     {maskAmount(t.amount, isHidden, amountSign + wallet.currencySymbol + " ")}
                   </p>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => setEditingTransaction(t)}
                       className="h-8 w-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
@@ -924,6 +934,7 @@ function WalletDetail({
                   setTimeout(() => {
                     startTransition(async () => {
                       await fetchTransactions();
+                      if (onTransactionChange) onTransactionChange();
                     });
                   }, 600);
                 }}

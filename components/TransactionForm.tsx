@@ -31,7 +31,7 @@ export function TransactionForm({
   const [categories, setCategories] = useState<Category[]>(propCategories || []);
   const [loading, setLoading] = useState(false);
   const [displayAmount, setDisplayAmount] = useState(
-    initialData?.amount.toLocaleString("id-ID") || ""
+    initialData?.amount ? initialData.amount.toLocaleString("id-ID", { maximumFractionDigits: 10 }) : ""
   );
   const dateInputRef = useRef<HTMLInputElement>(null);
 
@@ -75,10 +75,16 @@ export function TransactionForm({
   }, [initialData]);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, "");
-    const numValue = parseInt(value) || 0;
+    let value = e.target.value.replace(/[^\d,]/g, "");
+    const parts = value.split(",");
+    if (parts.length > 2) value = parts[0] + "," + parts.slice(1).join("");
+    const intPart = parts[0];
+    const decPart = parts.length > 1 ? "," + parts[1] : "";
+    const formattedInt = intPart ? parseInt(intPart, 10).toLocaleString("id-ID") : "";
+    
+    setDisplayAmount(value ? formattedInt + decPart : "");
+    const numValue = parseFloat(value.replace(/,/g, ".")) || 0;
     setFormData({ ...formData, amount: numValue });
-    setDisplayAmount(numValue.toLocaleString("id-ID"));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

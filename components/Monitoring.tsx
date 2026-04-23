@@ -390,7 +390,7 @@ export function Monitoring() {
                     }}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     formatter={(val: any) =>
-                      `Rp ${Number(val).toLocaleString("id-ID")}`
+                      `Rp ${Number(val).toLocaleString("id-ID", { maximumFractionDigits: 10 })}`
                     }
                   />
                   <Area

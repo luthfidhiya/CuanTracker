@@ -327,7 +327,7 @@ export function TransactionList() {
                         <span className="text-xs mr-1 opacity-50 font-medium">
                           {wallets.find(w => w.id === t.walletId)?.currencySymbol || "Rp"}
                         </span>
-                        {t.amount.toLocaleString("id-ID")}
+                        {t.amount.toLocaleString("id-ID", { maximumFractionDigits: 10 })}
                       </>
                     )}
                   </p>

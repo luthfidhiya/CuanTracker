@@ -190,6 +190,7 @@ export async function getSheetData(range: string) {
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range,
+      valueRenderOption: "UNFORMATTED_VALUE",
     });
     return response.data.values || [];
   } catch (error: unknown) {
@@ -203,7 +204,7 @@ export async function getSheetData(range: string) {
   }
 }
 
-export async function appendSheetData(range: string, values: string[]) {
+export async function appendSheetData(range: string, values: (string | number)[]) {
   const sheets = await getSheets();
   const response = await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
@@ -229,7 +230,7 @@ export async function findRowIndexById(
   return index + 1;
 }
 
-export async function updateSheetRow(range: string, values: string[]) {
+export async function updateSheetRow(range: string, values: (string | number)[]) {
   const sheets = await getSheets();
   await sheets.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,

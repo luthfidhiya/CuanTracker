@@ -46,7 +46,7 @@ export const maskAmount = (amount: number | string | undefined, isHidden: boolea
   if (isHidden) return `${prefix}••••••`;
   // if amount is a number, we format it, if it's already a string, we assume it's formatted
   if (typeof amount === "number") {
-    return `${prefix}${amount.toLocaleString("id-ID")}`;
+    return `${prefix}${amount.toLocaleString("id-ID", { maximumFractionDigits: 10 })}`;
   }
   return `${prefix}${amount}`;
 };
