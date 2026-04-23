@@ -143,6 +143,8 @@ export function WalletList({
           currencyCode: "IDR",
           currencySymbol: "Rp",
         });
+        await new Promise((r) => setTimeout(r, 600));
+        triggerRefresh();
       } catch (error) {
         console.error(error);
       }

@@ -80,11 +80,21 @@ export function Dashboard({
                 <div className="flex flex-col gap-2">
                   <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black text-transparent bg-clip-text bg-linear-to-b from-white to-slate-400 tracking-tighter flex items-baseline">
                     <span className="text-2xl sm:text-3xl lg:text-4xl font-bold text-slate-400 mr-3">Rp</span>
-                    {maskAmount(data.totalBalanceIdr, isHidden)}
+                    {maskAmount(
+                      typeof data.totalBalanceIdr === "number"
+                        ? parseFloat(data.totalBalanceIdr.toFixed(4))
+                        : data.totalBalanceIdr,
+                      isHidden
+                    )}
                   </h2>
                   <h3 className="text-2xl sm:text-3xl font-black text-slate-400 tracking-tighter opacity-80 flex items-baseline">
                     <span className="text-xl sm:text-2xl font-bold text-slate-500 mr-3">$</span>
-                    {maskAmount(data.totalBalanceUsd, isHidden)}
+                    {maskAmount(
+                      typeof data.totalBalanceUsd === "number"
+                        ? parseFloat(data.totalBalanceUsd.toFixed(4))
+                        : data.totalBalanceUsd,
+                      isHidden
+                    )}
                   </h3>
                   <div className="mt-2 text-xs font-bold text-slate-500/80 tracking-widest uppercase">
                     1 USD = Rp {data.exchangeRates?.usdToIdr?.toLocaleString('id-ID') || "..."}
