@@ -113,7 +113,6 @@ export function WalletList({
         if (selectedWalletId === targetId) {
           setSelectedWalletId(null);
         }
-        await new Promise((r) => setTimeout(r, 600));
         triggerRefresh();
       } catch (error) {
         console.error("Failed to delete wallet", error);
@@ -143,7 +142,6 @@ export function WalletList({
           currencyCode: "IDR",
           currencySymbol: "Rp",
         });
-        await new Promise((r) => setTimeout(r, 600));
         triggerRefresh();
       } catch (error) {
         console.error(error);
@@ -166,7 +164,6 @@ export function WalletList({
     startTransition(async () => {
       try {
         await editWallet(targetId, updateData);
-        await new Promise((r) => setTimeout(r, 600));
         triggerRefresh();
       } catch (error) {
         console.error(error);
@@ -639,7 +636,6 @@ function WalletDetail({
     startTransition(async () => {
       try {
         await deleteTransaction(targetId, targetDate);
-        await new Promise((r) => setTimeout(r, 600));
         await fetchTransactions();
         if (onTransactionChange) onTransactionChange();
       } catch {
@@ -666,10 +662,12 @@ function WalletDetail({
     }
   };
 
+  const { refreshKey } = useRefresh();
+
   useEffect(() => {
     fetchTransactions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMonth]);
+  }, [selectedMonth, refreshKey]);
 
   return (
     <div className="space-y-6 lg:bg-slate-950/50 lg:backdrop-blur-xl lg:p-8 lg:rounded-[32px] lg:border lg:border-white/5 lg:shadow-2xl min-h-[500px] relative">
@@ -758,11 +756,9 @@ function WalletDetail({
                   setAddOpen(false);
                   setLoading(true);
                 }}
-                onSuccess={() => {
-                  setTimeout(async () => {
-                    await fetchTransactions();
-                    if (onTransactionChange) onTransactionChange();
-                  }, 600);
+                onSuccess={async () => {
+                  await fetchTransactions();
+                  if (onTransactionChange) onTransactionChange();
                 }}
               />
             </Dialog.Content>
@@ -933,12 +929,10 @@ function WalletDetail({
                   setLoading(true);
                 }}
                 onSuccess={() => {
-                  setTimeout(() => {
-                    startTransition(async () => {
-                      await fetchTransactions();
-                      if (onTransactionChange) onTransactionChange();
-                    });
-                  }, 600);
+                  startTransition(async () => {
+                    await fetchTransactions();
+                    if (onTransactionChange) onTransactionChange();
+                  });
                 }}
               />
             )}

@@ -66,8 +66,6 @@ export function CategoryList() {
           type: "EXPENSE",
           color: COLORS[0],
         });
-        // small delay before fetching
-        await new Promise(r => setTimeout(r, 600));
         const c = await getCategories();
         setCategories(c);
       } catch (error) {
@@ -91,7 +89,6 @@ export function CategoryList() {
     startTransition(async () => {
       try {
         await editCategory(targetId, updateData);
-        await new Promise(r => setTimeout(r, 600));
         const c = await getCategories();
         setCategories(c);
       } catch (error) {
@@ -108,6 +105,8 @@ export function CategoryList() {
     startTransition(async () => {
       try {
         await deleteCategory(targetId);
+        const c = await getCategories();
+        setCategories(c);
       } catch (error) {
         console.error(error);
       }

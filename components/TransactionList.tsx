@@ -98,8 +98,6 @@ export function TransactionList() {
     startTransition(async () => {
       try {
         await deleteTransaction(targetId, targetDate);
-        // Delay to let Google Sheets propagate, then signal all tabs to refetch
-        await new Promise((r) => setTimeout(r, 600));
         triggerRefresh();
       } catch {
         console.error("Failed to delete transaction");
@@ -211,9 +209,7 @@ export function TransactionList() {
                           setLoading(true);
                         }}
                         onSuccess={() => {
-                          setTimeout(() => {
-                            triggerRefresh();
-                          }, 600);
+                          triggerRefresh();
                         }}
                       />
                     </Dialog.Content>
@@ -401,9 +397,7 @@ export function TransactionList() {
                   setLoading(true);
                 }}
                 onSuccess={() => {
-                  setTimeout(() => {
-                    triggerRefresh();
-                  }, 600);
+                  triggerRefresh();
                 }}
               />
             )}
