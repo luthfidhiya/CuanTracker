@@ -65,6 +65,14 @@ export function AppShell() {
 
   const activeIndex = TAB_ORDER.indexOf(activeTab);
 
+  // "Home" is the dashboard tab with no wallet detail focused. Back button
+  // navigates up to here first; only from here does it ask to exit.
+  const atRoot = activeTab === "dashboard" && focusWalletId === null;
+  const goToRoot = useCallback(() => {
+    setFocusWalletId(null);
+    setActiveTab("dashboard");
+  }, []);
+
   // ─── Mobile Swipe State ──────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -263,7 +271,7 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen bg-aurora text-slate-50 selection:bg-blue-500/30 overflow-hidden flex">
-      <ExitConfirm />
+      <ExitConfirm atRoot={atRoot} onNavigateBack={goToRoot} />
       <Tabs.Root
         value={activeTab}
         onValueChange={setActiveTab}
