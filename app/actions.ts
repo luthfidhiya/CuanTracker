@@ -56,8 +56,12 @@ export async function getWallets(): Promise<
     const initialBalance = parseFloat(String(row[3] || "0"));
     const currencyCode = row[5] || "IDR";
     const currencySymbol = row[6] || "Rp";
+    const rawBalance = row[7];
+    const parsedBalance = parseFloat(String(rawBalance ?? ""));
     const currentBalance =
-      parseFloat(String(row[7] || "0")) || parseFloat(String(row[3] || "0"));
+      rawBalance !== undefined && rawBalance !== "" && !isNaN(parsedBalance)
+        ? parsedBalance
+        : parseFloat(String(row[3] || "0"));
     return {
       id: String(row[0]),
       name: String(row[1]),

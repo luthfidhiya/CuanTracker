@@ -25,6 +25,7 @@ import { TransactionList } from "./TransactionList";
 import { Monitoring } from "./Monitoring";
 import { CategoryList } from "./CategoryList";
 import { usePrivacy } from "./PrivacyContext";
+import { ExitConfirm } from "./ExitConfirm";
 
 const TAB_ORDER = [
   "dashboard",
@@ -262,6 +263,7 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen bg-aurora text-slate-50 selection:bg-blue-500/30 overflow-hidden flex">
+      <ExitConfirm />
       <Tabs.Root
         value={activeTab}
         onValueChange={setActiveTab}
