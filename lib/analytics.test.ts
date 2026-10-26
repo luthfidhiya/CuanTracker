@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildDetailedStats, percentChange, previousPeriod, sumIncomeExpense, totalBalance } from "./analytics";
+import {
+  buildDetailedStats,
+  buildNetWorth,
+  percentChange,
+  previousPeriod,
+  sumIncomeExpense,
+  totalBalance,
+} from "./analytics";
 import type { ExchangeRates } from "./exchange";
 import type { Category, Transaction, WalletWithBalance } from "./types";
 
@@ -131,5 +138,52 @@ describe("percentChange", () => {
     expect(percentChange(110, 100)).toBeCloseTo(10);
     expect(percentChange(50, 100)).toBeCloseTo(-50);
     expect(percentChange(50, 0)).toBeNull();
+  });
+});
+
+describe("buildNetWorth", () => {
+  const idr = wallet("idr", "IDR", 1_000_000);
+  const late = wallet("late", "IDR", 500_000);
+
+  it("works back from today's balance by undoing later months", () => {
+    const points = buildNetWorth(
+      [idr],
+      [
+        tx({ date: "2026-07-01", type: "INCOME", amount: 0 }),
+        tx({ date: "2026-09-10", type: "INCOME", amount: 300_000 }),
+        tx({ date: "2026-10-05", type: "EXPENSE", amount: 100_000 }),
+      ],
+      rates,
+      ["2026-08", "2026-09", "2026-10"]
+    );
+    expect(points).toEqual([
+      { month: "2026-08", value: 800_000 },
+      { month: "2026-09", value: 1_100_000 },
+      { month: "2026-10", value: 1_000_000 },
+    ]);
+  });
+
+  it("leaves transfers between own wallets out of the total", () => {
+    const points = buildNetWorth(
+      [idr, wallet("idr2", "IDR", 200_000)],
+      [
+        tx({ date: "2026-08-01", type: "INCOME", amount: 1 }),
+        tx({ date: "2026-08-01", type: "INCOME", amount: 1, walletId: "idr2" }),
+        tx({ date: "2026-10-01", type: "TRANSFER", amount: 200_000, toWalletId: "idr2" }),
+      ],
+      rates,
+      ["2026-09", "2026-10"]
+    );
+    expect(points.map((p) => p.value)).toEqual([1_200_000, 1_200_000]);
+  });
+
+  it("counts a wallet from the month of its first transaction", () => {
+    const points = buildNetWorth(
+      [idr, late],
+      [tx({ date: "2026-08-01", type: "INCOME", amount: 1 }), tx({ date: "2026-10-02", walletId: "late", amount: 0 })],
+      rates,
+      ["2026-09", "2026-10"]
+    );
+    expect(points.map((p) => p.value)).toEqual([1_000_000, 1_500_000]);
   });
 });

@@ -144,3 +144,61 @@ export function percentChange(current: number, previous: number): number | null 
   if (previous <= 0) return null;
   return ((current - previous) / previous) * 100;
 }
+
+/** How a transaction moves a wallet's balance: +income, -expense, -/+ transfer out/in. */
+function walletFlows(t: Transaction): [walletId: string, delta: number][] {
+  switch (t.type) {
+    case "INCOME":
+      return [[t.walletId, t.amount]];
+    case "EXPENSE":
+      return [[t.walletId, -t.amount]];
+    case "TRANSFER":
+      return t.toWalletId ? [[t.walletId, -t.amount], [t.toWalletId, t.amount]] : [[t.walletId, -t.amount]];
+  }
+}
+
+/**
+ * Total balance in IDR at the end of each month, worked backwards from today's
+ * balances by undoing later transactions. Rates are today's, since past rates
+ * aren't stored. Wallets have no creation date, so a wallet counts from the
+ * month of its first transaction; before that its opening balance would
+ * otherwise show up in months it didn't exist yet.
+ */
+export function buildNetWorth(
+  wallets: WalletWithBalance[],
+  transactions: Transaction[],
+  rates: ExchangeRates,
+  months: string[]
+): { month: string; value: number }[] {
+  const firstMonth = new Map<string, string>();
+  const flowsByMonth = new Map<string, Map<string, number>>();
+  for (const t of transactions) {
+    const month = monthKeyFromDate(t.date);
+    for (const [walletId, delta] of walletFlows(t)) {
+      if (!firstMonth.has(walletId) || month < firstMonth.get(walletId)!) firstMonth.set(walletId, month);
+      const flows = flowsByMonth.get(month) ?? new Map<string, number>();
+      flows.set(walletId, (flows.get(walletId) ?? 0) + delta);
+      flowsByMonth.set(month, flows);
+    }
+  }
+
+  const balance = new Map(wallets.map((w) => [w.id, w.currentBalance]));
+  // Undo everything dated after the last charted month (e.g. future-dated entries).
+  const last = months[months.length - 1];
+  for (const [month, flows] of flowsByMonth) {
+    if (month > last) for (const [id, delta] of flows) balance.set(id, (balance.get(id) ?? 0) - delta);
+  }
+
+  const points: { month: string; value: number }[] = [];
+  for (let i = months.length - 1; i >= 0; i--) {
+    const month = months[i];
+    const usd = wallets.reduce((sum, w) => {
+      const started = firstMonth.get(w.id);
+      if (started && started > month) return sum;
+      return sum + convertToUsd(balance.get(w.id) ?? 0, w.currencyCode, rates);
+    }, 0);
+    points.push({ month, value: usd * rates.usdToIdr });
+    for (const [id, delta] of flowsByMonth.get(month) ?? []) balance.set(id, (balance.get(id) ?? 0) - delta);
+  }
+  return points.reverse();
+}

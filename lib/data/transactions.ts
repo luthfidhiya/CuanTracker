@@ -12,6 +12,7 @@ import { rowsToTransactions, transactionToRow } from "@/lib/sheets/mappers";
 import {
   isTransactionSheet,
   monthKeyFromDate,
+  monthKeyFromSheetName,
   monthsBetween,
   sheetNameForMonth,
   type MonthKey,
@@ -37,6 +38,23 @@ export async function listTransactionsBetween(from: string, to: string): Promise
     .reverse()
     .flat()
     .filter((t) => t.date >= from && t.date <= to);
+}
+
+/** Months that have a transaction sheet, oldest first. */
+export async function listTransactionMonths(): Promise<MonthKey[]> {
+  "use cache";
+  cacheLife(SHEET_CACHE);
+  cacheTag(tags.transactions);
+  return (await listSheets())
+    .map((s) => monthKeyFromSheetName(s.title))
+    .filter((m): m is MonthKey => m !== null)
+    .sort();
+}
+
+/** Every transaction from the last `maxMonths` months that have a sheet. */
+export async function listRecentTransactions(maxMonths: number): Promise<Transaction[]> {
+  const months = (await listTransactionMonths()).slice(-maxMonths);
+  return (await Promise.all(months.map(listTransactions))).flat();
 }
 
 export type EditPlan =
