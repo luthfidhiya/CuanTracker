@@ -23,6 +23,11 @@ export function formatMonthShort(month: MonthKey) {
   return fmt(`${month}-01`, { month: "short", year: "numeric" });
 }
 
+/** "2026-09-01" -> "Sep" */
+export function formatMonthShortName(iso: string) {
+  return fmt(iso, { month: "short" });
+}
+
 /** "2026-10-26" -> "26 Okt" */
 export function formatShortDate(iso: string) {
   return fmt(iso, { day: "numeric", month: "short" });

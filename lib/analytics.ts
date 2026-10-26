@@ -1,5 +1,5 @@
 import { convertToUsd, type ExchangeRates } from "./exchange";
-import { daysBetween, monthKeyFromDate, monthsBetween } from "./sheets/schema";
+import { daysBetween, monthKeyFromDate, monthsBetween, shiftDate } from "./sheets/schema";
 import type {
   Category,
   DetailedStats,
@@ -126,4 +126,21 @@ export function buildDetailedStats(
     expenseByWallet: toStatItems(expenseByWallet, walletItem),
     incomeByWallet: toStatItems(incomeByWallet, walletItem),
   };
+}
+
+/**
+ * The period a range is compared against. Up to 6 months it's the period just
+ * before (Oct 1–26 → Sep 1–26, Aug–Oct → May–Jul); longer ranges compare with
+ * the same dates a year earlier, which is what "this year" is usually held against.
+ */
+export function previousPeriod(from: string, to: string) {
+  const months = monthsBetween(monthKeyFromDate(from), monthKeyFromDate(to)).length;
+  const shift = months <= 6 ? months : Math.max(12, months);
+  return { from: shiftDate(from, -shift), to: shiftDate(to, -shift) };
+}
+
+/** Relative change in percent, or null when there's nothing to compare with. */
+export function percentChange(current: number, previous: number): number | null {
+  if (previous <= 0) return null;
+  return ((current - previous) / previous) * 100;
 }

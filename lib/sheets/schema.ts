@@ -91,6 +91,18 @@ export function monthsBetween(from: MonthKey, to: MonthKey): MonthKey[] {
   return months;
 }
 
+/**
+ * Moves a date by whole months, keeping the day where possible: 31 Oct - 1 month
+ * is 30 Sep. A month's last day maps to the target month's last day.
+ */
+export function shiftDate(iso: string, months: number): string {
+  const month = shiftMonth(monthKeyFromDate(iso), months);
+  const lastDay = lastDayOfMonth(month);
+  if (iso === lastDayOfMonth(monthKeyFromDate(iso))) return lastDay;
+  const day = iso.slice(8, 10);
+  return `${month}-${day}` > lastDay ? lastDay : `${month}-${day}`;
+}
+
 /** Inclusive list of "yyyy-MM-dd" days from `from` to `to`. Empty when `from` is after `to`. */
 export function daysBetween(from: string, to: string): string[] {
   const days: string[] = [];

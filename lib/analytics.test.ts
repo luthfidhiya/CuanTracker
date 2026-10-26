@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDetailedStats, sumIncomeExpense, totalBalance } from "./analytics";
+import { buildDetailedStats, percentChange, previousPeriod, sumIncomeExpense, totalBalance } from "./analytics";
 import type { ExchangeRates } from "./exchange";
 import type { Category, Transaction, WalletWithBalance } from "./types";
 
@@ -104,5 +104,32 @@ describe("buildDetailedStats", () => {
   it("totals income and expense", () => {
     expect(stats.totalIncome).toBe(1_000_000);
     expect(stats.totalExpense).toBe(55_000);
+  });
+});
+
+describe("previousPeriod", () => {
+  it("compares month-to-date with the same days last month", () => {
+    expect(previousPeriod("2026-10-01", "2026-10-26")).toEqual({ from: "2026-09-01", to: "2026-09-26" });
+  });
+
+  it("clamps to the end of shorter months", () => {
+    expect(previousPeriod("2026-03-01", "2026-03-31")).toEqual({ from: "2026-02-01", to: "2026-02-28" });
+    expect(previousPeriod("2026-03-01", "2026-03-30")).toEqual({ from: "2026-02-01", to: "2026-02-28" });
+  });
+
+  it("uses the preceding months for multi-month ranges", () => {
+    expect(previousPeriod("2026-08-01", "2026-10-26")).toEqual({ from: "2026-05-01", to: "2026-07-26" });
+  });
+
+  it("uses last year for long ranges", () => {
+    expect(previousPeriod("2026-01-01", "2026-10-26")).toEqual({ from: "2025-01-01", to: "2025-10-26" });
+  });
+});
+
+describe("percentChange", () => {
+  it("returns the change, or null without a baseline", () => {
+    expect(percentChange(110, 100)).toBeCloseTo(10);
+    expect(percentChange(50, 100)).toBeCloseTo(-50);
+    expect(percentChange(50, 0)).toBeNull();
   });
 });

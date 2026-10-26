@@ -6,15 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, PageHeader } from "@/components/ui/misc";
 import { RatesNotice } from "@/components/ui/rates-notice";
+import { Change } from "@/components/ui/change";
 import { Stat } from "@/components/ui/stat";
-import { buildDetailedStats } from "@/lib/analytics";
+import { buildDetailedStats, previousPeriod, sumIncomeExpense } from "@/lib/analytics";
 import { listCategories } from "@/lib/data/categories";
 import { getRates } from "@/lib/data/rates";
 import { listTransactionsBetween } from "@/lib/data/transactions";
 import { listWallets } from "@/lib/data/wallets";
-import { formatDate } from "@/lib/format-date";
+import { formatDate, formatMonthShortName } from "@/lib/format-date";
 import { dateParam, type SearchParams } from "@/lib/params";
-import { firstDayOfMonth, monthKeyFromDate, shiftMonth, todayIso } from "@/lib/sheets/schema";
+import { firstDayOfMonth, monthKeyFromDate, monthsBetween, shiftMonth, todayIso } from "@/lib/sheets/schema";
 import { cn } from "@/lib/utils";
 
 /** Each month is a separate sheet read, so very long ranges are clamped. */
@@ -44,14 +45,25 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
   const today = todayIso();
   const { from, to, clamped } = resolveRange(dateParam(query.from), dateParam(query.to), today);
 
-  const [transactions, wallets, categories, rates] = await Promise.all([
+  // Each month is a sheet read; past a year the comparison isn't worth the reads.
+  const spanMonths = monthsBetween(monthKeyFromDate(from), monthKeyFromDate(to)).length;
+  const previous = spanMonths <= 12 ? previousPeriod(from, to) : null;
+  const [transactions, previousTransactions, wallets, categories, rates] = await Promise.all([
     listTransactionsBetween(from, to),
+    previous ? listTransactionsBetween(previous.from, previous.to) : Promise.resolve(null),
     listWallets(),
     listCategories(),
     getRates(),
   ]);
   const stats = buildDetailedStats(transactions, wallets, categories, rates, { from, to });
   const net = stats.totalIncome - stats.totalExpense;
+  const before = previousTransactions && sumIncomeExpense(previousTransactions, wallets, rates);
+  const against =
+    spanMonths === 1 && previous
+      ? formatMonthShortName(previous.from)
+      : previous && previous.from.slice(5) === from.slice(5) && spanMonths > 6
+        ? "tahun lalu"
+        : "periode lalu";
   const savingRate = stats.totalIncome > 0 ? (net / stats.totalIncome) * 100 : null;
 
   return (
@@ -100,8 +112,24 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Pemasukan" value={stats.totalIncome} tone="income" />
-        <Stat label="Pengeluaran" value={stats.totalExpense} tone="expense" />
+        <Stat
+          label="Pemasukan"
+          value={stats.totalIncome}
+          tone="income"
+          footer={
+            before && <Change current={stats.totalIncome} previous={before.income} goodWhen="up" against={against} />
+          }
+        />
+        <Stat
+          label="Pengeluaran"
+          value={stats.totalExpense}
+          tone="expense"
+          footer={
+            before && (
+              <Change current={stats.totalExpense} previous={before.expense} goodWhen="down" against={against} />
+            )
+          }
+        />
         <Stat label="Selisih" value={net} />
         <Card className="px-4 py-3">
           <p className="text-xs text-muted">Rasio tabungan</p>
@@ -110,6 +138,11 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Se
           </p>
         </Card>
       </div>
+      {previous && (
+        <p className="-mt-4 mb-6 px-1 text-xs text-subtle">
+          Dibandingkan dengan {formatDate(previous.from)} – {formatDate(previous.to)}
+        </p>
+      )}
 
       {stats.trend.points.length > 1 && (
         <Card className="mb-6 p-4">

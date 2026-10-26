@@ -15,7 +15,7 @@ export function ExchangeRates({ rates }: { rates: Rates }) {
   ];
   return (
     <div className="space-y-2">
-      <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2">
         {rows.map((r) => (
           <li key={r.code} className="rounded-(--radius-card) border border-border bg-surface px-3 py-2.5">
             <p className="flex items-center gap-1.5 text-xs text-muted">
