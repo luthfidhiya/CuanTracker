@@ -1,45 +1,44 @@
 import type { Metadata, Viewport } from "next";
 import { Outfit } from "next/font/google";
+import { Toaster } from "sonner";
 import "./globals.css";
-import { cn } from "@/lib/utils";
 
 const outfit = Outfit({ subsets: ["latin"] });
 
 export const viewport: Viewport = {
-  themeColor: "#020617",
+  themeColor: "#0c0e11",
+  viewportFit: "cover",
 };
 
 export const metadata: Metadata = {
-  title: "CuanTracker — Personal Finance Monitor",
-  description:
-    "Track your income, expenses and transfers across multiple wallets. Powered by Google Sheets.",
+  title: "CuanTracker",
+  description: "Catat pemasukan, pengeluaran, dan transfer antar dompet. Data tersimpan di Google Sheets.",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
     title: "CuanTracker",
   },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className="dark">
-      <body
-        className={cn(outfit.className, "bg-slate-950 text-white antialiased")}
-      >
+    <html lang="id">
+      <body className={`${outfit.className} antialiased`}>
         {children}
+        <Toaster
+          theme="dark"
+          position="top-center"
+          toastOptions={{
+            style: {
+              background: "var(--color-surface-2)",
+              border: "1px solid var(--color-border)",
+              color: "var(--color-fg)",
+            },
+          }}
+        />
         <script
           dangerouslySetInnerHTML={{
-            __html: `
-              if ('serviceWorker' in navigator) {
-                window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/sw.js');
-                });
-              }
-            `,
+            __html: `if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js'); }); }`,
           }}
         />
       </body>

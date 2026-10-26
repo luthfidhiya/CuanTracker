@@ -1,6 +1,6 @@
 # CuanTracker 💰
 
-A **premium personal finance management app** built with Next.js 16 and Google Sheets as the database. Track your income, expenses, and inter-wallet transfers with a stunning glassmorphism dark-mode UI — no traditional database setup required.
+A personal finance app built with Next.js 16 that uses Google Sheets as its database. Track income, expenses, and transfers between your wallets, without setting up a database.
 
 > **Goal:** This project is built specifically for **personal financial monitoring** — helping individuals understand where their money comes from, where it goes, and how their wealth changes over time across multiple wallets and accounts.
 
@@ -23,26 +23,19 @@ The tradeoff is that it is best suited for personal/small-scale use (not thousan
 
 ## Features
 
-| Feature                               | Description                                                                                                              |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 📊 **Dashboard Overview**             | Total balance, this-month income vs expense, and a quick bar chart summary                                               |
-| 💳 **Wallet / Card Management**       | Create, edit, and manage multiple wallets (Bank, E-Wallet, Cash, Investment) with custom colors                          |
-| 🌍 **Multi-Currency Support**         | Support for multiple currencies including fiat (IDR, USD) and crypto (BTC, ETH, USDC)                                    |
-| 💱 **Live Crypto Rates**              | Real-time exchange rates for crypto assets relative to USD on the dashboard                                              |
-| 🔍 **Per-Wallet Transaction History** | Click any wallet card to see transactions filtered to that wallet                                                        |
-| 📋 **Global Transaction Log**         | Full history across all wallets with month navigation, type filtering, and wallet source badges                          |
-| ➕ **Income / Expense / Transfer**    | Log all three transaction types; transfers move money between your own wallets                                           |
-| 🏷️ **Category Management**            | Define and edit custom Income and Expense categories; soft-delete preserves historical labels                            |
-| 🔎 **Search & Filter**                | Search by category or note; filter by All / Income / Expense / Transfer                                                  |
-| ✏️ **Edit & Delete**                  | Inline edit and delete for every transaction, category, and wallet                                                       |
-| 📈 **Analytics Tab**                  | Area chart for cash-flow trends, pie charts for spend-by-category, spend-by-wallet, income-by-wallet over any date range |
-| 🧮 **IDR-Normalized Charts**          | All foreign currency transactions are converted to IDR automatically for accurate financial aggregations in charts       |
-| 🌙 **Premium Dark UI**                | Neon aurora background, glassmorphism cards, smooth animations, fully responsive                                         |
-| 📱 **Swipeable Mobile Navigation**    | Horizontal swipeable carousel for mobile devices with auto-scrolling active tabs and a sticky glassmorphic top header    |
-| 🔗 **Deep-Link Navigation**           | Seamless navigation between components (e.g. clicking a wallet navigates to activity view, clicking chart to analytics)  |
-| 🤫 **Privacy Mode**                   | One-click toggle to blur out all sensitive amounts                                                                       |
-| ⚡ **Lazy Per-Menu Fetching**         | Pages dynamically load only what they need when active, minimizing API calls and maximizing speed                        |
-| 🧮 **Formula-Based Balances**         | Wallet balances are dynamically calculated purely using Google Sheets SUMPRODUCT formulas automatically injected on init |
+| Feature                     | Description                                                                                      |
+| --------------------------- | ------------------------------------------------------------------------------------------------ |
+| **Overview**                | Total balance (IDR and USD), this month's income, expense and net, wallets, latest transactions  |
+| **Wallets**                 | Bank, e-wallet, cash and investment wallets with their own color and currency                   |
+| **Multi-currency**          | IDR, USD, USDC, ETH and BTC; totals and analytics are converted to IDR with live rates          |
+| **Transactions**            | Income, expense and transfers between wallets of the same currency, grouped by day with a daily net |
+| **Search and filter**       | Search by category or note, filter by type, browse month by month (the month is in the URL)     |
+| **Wallet detail**           | Per-wallet history where transfers read as money in or out of that wallet                       |
+| **Categories**              | Income and expense categories with colors, opened from the settings menu                                 |
+| **Analytics**               | Monthly trend, spending by category and by wallet, saving rate, over any date range (max 24 months) |
+| **Privacy mode**            | Masks every amount and blurs charts; on by default so balances never flash on screen            |
+| **Installable app**         | PWA with a bottom tab bar, a global add button and swipe between tabs on phones                 |
+| **Formula-based balances**  | Wallet balances are `SUMPRODUCT` formulas in the sheet, so the spreadsheet stays correct when edited by hand |
 
 ---
 
@@ -50,12 +43,14 @@ The tradeoff is that it is best suited for personal/small-scale use (not thousan
 
 | Layer              | Technology                                                                        |
 | ------------------ | --------------------------------------------------------------------------------- |
-| **Framework**      | [Next.js 16](https://nextjs.org/) (App Router, React Server Components)           |
+| **Framework**      | [Next.js 16](https://nextjs.org/) (App Router, Server Components, Cache Components) |
 | **UI**             | React 19, Tailwind CSS v4                                                         |
 | **Icons**          | [Lucide React](https://lucide.dev/)                                               |
 | **Charts**         | [Recharts](https://recharts.org/)                                                 |
 | **Animations**     | [Framer Motion](https://www.framer.com/motion/)                                   |
-| **Dialogs / Tabs** | [Radix UI](https://www.radix-ui.com/)                                             |
+| **Dialogs**        | [Radix UI](https://www.radix-ui.com/) and [Sonner](https://sonner.emilkowal.ski/) toasts |
+| **Validation**     | [Zod](https://zod.dev/)                                                           |
+| **Tests**          | [Vitest](https://vitest.dev/)                                                     |
 | **Auth**           | [NextAuth.js v5](https://authjs.dev/) (Credentials provider, JWT session)         |
 | **Database**       | [Google Sheets API v4](https://developers.google.com/sheets/api) via `googleapis` |
 | **Date handling**  | [date-fns](https://date-fns.org/)                                                 |
@@ -67,6 +62,7 @@ The tradeoff is that it is best suited for personal/small-scale use (not thousan
 
 Before running this project, you need:
 
+1. **Node.js 24** (or 22.23.4+; older releases are missing the October 2026 security fixes)
 1. A **Google Account**
 2. A **Google Cloud project** with the Sheets API enabled
 3. A **Service Account** with access to your spreadsheet
@@ -122,7 +118,9 @@ APP_PASSWORD=your_secure_password_here
 AUTH_SECRET=your_auth_secret_here
 ```
 
-> **Important:** Copy the `private_key` value from the downloaded JSON file exactly as-is, keeping the `\n` escape sequences intact and wrapping the entire value in double quotes.
+> **Important:** Wrap `GOOGLE_PRIVATE_KEY` in double quotes. Paste it either on one line with the `\n` escapes from the JSON file, or across several lines inside the quotes. Without the quotes only the first line is read and every request to Google fails.
+>
+> `.env` works too; Next.js reads both. Never commit either file.
 
 ---
 
@@ -138,7 +136,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) in your browser. You will be redirected to `/login` — use the password you set in `APP_PASSWORD`.
 
-On first load, the app automatically creates the required sheets in your spreadsheet:
+On the first save, the app creates the sheets it needs in your spreadsheet:
 
 - `Wallets` — stores wallet/card records
 - `Categories` — stores custom income/expense categories
@@ -150,6 +148,7 @@ On first load, the app automatically creates the required sheets in your spreads
 npm run build    # Build for production
 npm run start    # Start production server
 npm run lint     # Run ESLint
+npm test         # Unit tests for the data logic (no Google access needed)
 ```
 
 ---
@@ -191,7 +190,9 @@ npm run lint     # Run ESLint
 | G      | WalletId    | `uuid-v4`                         |
 | H      | ToWalletId  | `uuid-v4` (only for TRANSFER)     |
 
-> **Soft Delete for Categories:** Deleting a category marks its name as `DELETED_<timestamp>` rather than removing the row, preserving the integrity of existing transaction labels.
+> **Category names are stored on each transaction**, so deleting or renaming a category never changes past transactions. Categories that older versions soft-deleted (named `DELETED_…`) are hidden.
+>
+> **Deleting a wallet** also deletes every transaction that touches it, including transfers to and from other wallets; the app shows how many before you confirm.
 
 ---
 
@@ -199,38 +200,38 @@ npm run lint     # Run ESLint
 
 ```
 ├── app/
-│   ├── actions.ts              # All server actions (CRUD for wallets, transactions, categories)
-│   ├── layout.tsx              # Root layout with metadata and font
-│   ├── page.tsx                # Entry point — providers wrapper and AppShell container
-│   ├── login/
-│   │   ├── page.tsx            # Login page
-│   │   └── actions.ts          # Login server action (NextAuth signIn)
-│   └── api/auth/[...nextauth]/ # NextAuth HTTP handlers (GET/POST)
-│       └── route.ts
+│   ├── (app)/                  # Signed-in pages, sharing the app shell
+│   │   ├── layout.tsx          # Shell + global "add transaction" button
+│   │   ├── page.tsx            # Overview
+│   │   ├── transactions/       # ?month=yyyy-MM
+│   │   ├── wallets/            # List and wallets/[id] detail
+│   │   ├── analytics/          # ?from=&to=
+│   │   ├── categories/         # Category management
+│   │   └── error.tsx           # Shown when Google Sheets can't be reached
+│   ├── actions/                # Server actions: auth check, validation, write lock, cache invalidation
+│   ├── login/                  # Login page and action
+│   └── api/auth/[...nextauth]/ # NextAuth handlers
 ├── components/
-│   ├── AppShell.tsx            # Main layout: desktop sidebar, mobile sticky header + horizontal tabs, FAB
-│   ├── Dashboard.tsx           # Overview: balance card + bar chart + horizontal wallet scroller (mobile)
-│   ├── WalletList.tsx          # Wallet grid + per-wallet transaction detail view
-│   ├── TransactionList.tsx     # Global transaction history with search/filter
-│   ├── TransactionForm.tsx     # Shared form for add/edit transactions
-│   ├── CategoryList.tsx        # Category management UI with soft-delete support
-│   ├── Monitoring.tsx          # Analytics: area chart + pie charts
-│   ├── PrivacyContext.tsx      # React Context for global show/hide amounts state
-│   ├── RefreshContext.tsx      # React Context to trigger lazy re-fetching across tabs
-│   └── ui/
-│       ├── glass-card.tsx      # Reusable glassmorphism card component
-│       ├── button.tsx          # Styled button
-│       ├── input.tsx           # Styled input
-│       └── confirm-dialog.tsx  # Reusable confirmation dialog
+│   ├── shell/                  # Sidebar, bottom tabs, settings menu, swipe navigation, exit confirmation
+│   ├── transactions/           # Form, grouped list, filters, add button
+│   ├── wallets/                # Wallet form, list rows, edit/delete actions
+│   ├── categories/             # Category manager
+│   ├── analytics/              # Trend chart and breakdown lists
+│   ├── ui/                     # Button, inputs, sheet, confirm dialog, amount, month nav, …
+│   └── privacy.ts              # Privacy mode (stored per device)
 ├── lib/
-│   ├── google.ts               # Google Sheets API client, dynamic formula injector, and CRUD helpers
-│   ├── types.ts                # All TypeScript interfaces
-│   ├── currencies.ts           # Supported currencies and formatters (fiat and crypto)
-│   ├── exchange.ts             # Live exchange rate fetchers via Frankfurter and CoinGecko
-│   └── utils.ts                # cn() utility for class merging
-├── auth.ts                     # NextAuth configuration (Credentials provider, JWT, route guards)
-└── .env.local                  # Environment variables (not committed to git)
+│   ├── sheets/                 # Google Sheets client, layout (schema), row mappers, balance formula
+│   ├── data/                   # Cached reads ("use cache" + tags) and writes per entity
+│   ├── server/action.ts        # Shared wrapper for server actions
+│   ├── analytics.ts            # Totals and breakdowns (pure, tested)
+│   ├── validation.ts           # Zod schemas for all inputs
+│   ├── money.ts, format-date.ts# Formatting for id-ID
+│   └── exchange.ts             # Exchange rates via Frankfurter and CoinGecko
+├── auth.ts                     # NextAuth configuration (Credentials provider, JWT)
+└── proxy.ts                    # Redirects signed-out requests to /login
 ```
+
+Google Sheets allows 60 read requests per minute. Reads are cached for a short time and invalidated after every change, and multi-sheet scans use a single batch request.
 
 ---
 

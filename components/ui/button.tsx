@@ -1,36 +1,64 @@
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import React from "react";
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "ghost" | "danger";
-  size?: "sm" | "md" | "lg";
+type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Size = "sm" | "md" | "lg" | "icon";
+
+const variants: Record<Variant, string> = {
+  primary: "bg-accent text-accent-fg hover:bg-accent-hover",
+  secondary: "bg-surface-2 text-fg border border-border hover:border-border-strong",
+  ghost: "text-muted hover:text-fg hover:bg-surface-2",
+  danger: "bg-danger text-white hover:bg-danger/90",
+};
+
+const sizes: Record<Size, string> = {
+  sm: "h-8 px-3 text-sm gap-1.5",
+  md: "h-10 px-4 text-sm gap-2",
+  lg: "h-12 px-5 text-base gap-2",
+  icon: "size-10",
+};
+
+export function buttonStyles({
+  variant = "primary",
+  size = "md",
+  className,
+}: { variant?: Variant; size?: Size; className?: string } = {}) {
+  return cn(
+    "inline-flex shrink-0 items-center justify-center rounded-lg font-medium transition-colors",
+    "disabled:pointer-events-none disabled:opacity-50 cursor-pointer",
+    variants[variant],
+    sizes[size],
+    className
+  );
 }
 
-export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = "primary", size = "md", ...props }, ref) => {
-    return (
-      <button
-        ref={ref}
-        className={cn(
-          "inline-flex items-center justify-center rounded-xl font-medium transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed",
-          {
-            "bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/30":
-              variant === "primary",
-            "bg-white/10 text-white hover:bg-white/20 border border-white/10 backdrop-blur-md":
-              variant === "secondary",
-            "hover:bg-white/5 text-gray-300 hover:text-white":
-              variant === "ghost",
-            "bg-red-500/20 text-red-200 border border-red-500/50 hover:bg-red-500/30":
-              variant === "danger",
-            "px-3 py-1.5 text-sm": size === "sm",
-            "px-4 py-2 text-base": size === "md",
-            "px-6 py-3 text-lg": size === "lg",
-          },
-          className
-        )}
-        {...props}
-      />
-    );
-  }
-);
-Button.displayName = "Button";
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: Variant;
+  size?: Size;
+  /** Shows a spinner and disables the button. */
+  loading?: boolean;
+}
+
+export function Button({
+  variant,
+  size,
+  loading = false,
+  className,
+  children,
+  disabled,
+  type = "button",
+  ...props
+}: ButtonProps) {
+  return (
+    <button
+      type={type}
+      className={buttonStyles({ variant, size, className })}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      {...props}
+    >
+      {loading && <Loader2 className="size-4 animate-spin" aria-hidden />}
+      {children}
+    </button>
+  );
+}
