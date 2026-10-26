@@ -1,60 +1,74 @@
-
 export interface ExchangeRates {
   usdToIdr: number;
   btcToUsd: number;
   ethToUsd: number;
   usdcToUsd: number;
+  /** True when at least one source failed and older or default values were used. */
+  estimated: boolean;
 }
 
-let rateCache: { rates: ExchangeRates; fetchedAt: number } | null = null;
-const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+type FiatRates = Pick<ExchangeRates, "usdToIdr">;
+type CryptoRates = Pick<ExchangeRates, "btcToUsd" | "ethToUsd" | "usdcToUsd">;
 
-export async function fetchExchangeRates(): Promise<ExchangeRates> {
-  if (rateCache && Date.now() - rateCache.fetchedAt < CACHE_TTL) {
-    return rateCache.rates;
-  }
+// Only used when a source has never answered since the server started.
+// Approximate values as of October 2026; refresh them now and then.
+const DEFAULT_FIAT: FiatRates = { usdToIdr: 18000 };
+const DEFAULT_CRYPTO: CryptoRates = { btcToUsd: 80000, ethToUsd: 2300, usdcToUsd: 1 };
 
-  // Fallback default rates in case APIs fail
-  const rates: ExchangeRates = {
-    usdToIdr: 16000,
-    btcToUsd: 65000,
-    ethToUsd: 3500,
-    usdcToUsd: 1.0,
+const REQUEST_TIMEOUT_MS = 5000;
+
+// Last successful answer per source, so an outage falls back to recent rates
+// instead of the hardcoded defaults.
+let lastFiat: FiatRates | null = null;
+let lastCrypto: CryptoRates | null = null;
+
+async function getJson(url: string): Promise<unknown> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  if (!res.ok) throw new Error(`${url} responded ${res.status}`);
+  return res.json();
+}
+
+const positive = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value > 0;
+
+async function fetchFiat(): Promise<FiatRates> {
+  const data = (await getJson("https://api.frankfurter.dev/v1/latest?base=USD&symbols=IDR")) as {
+    rates?: { IDR?: unknown };
   };
+  const idr = data?.rates?.IDR;
+  if (!positive(idr)) throw new Error("Frankfurter: missing IDR rate");
+  return { usdToIdr: idr };
+}
 
-  try {
-    // 1. Fetch Fiat (USD -> IDR) via Frankfurter
-    try {
-      const fiatRes = await fetch("https://api.frankfurter.dev/v1/latest?base=USD&symbols=IDR", { next: { revalidate: 1800 } });
-      if (fiatRes.ok) {
-        const fiatData = await fiatRes.json();
-        if (fiatData?.rates?.IDR) {
-          rates.usdToIdr = fiatData.rates.IDR;
-        }
-      }
-    } catch (e) {
-      console.error("Failed to fetch fiat rates:", e);
-    }
+async function fetchCrypto(): Promise<CryptoRates> {
+  const data = (await getJson(
+    "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,usd-coin&vs_currencies=usd"
+  )) as Record<string, { usd?: unknown } | undefined>;
+  const btc = data?.bitcoin?.usd;
+  const eth = data?.ethereum?.usd;
+  const usdc = data?.["usd-coin"]?.usd;
+  if (!positive(btc) || !positive(eth) || !positive(usdc)) throw new Error("CoinGecko: missing prices");
+  return { btcToUsd: btc, ethToUsd: eth, usdcToUsd: usdc };
+}
 
-    // 2. Fetch Crypto (BTC, ETH, USDC -> USD) via CoinGecko Demo
-    try {
-      const cryptoRes = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,usd-coin&vs_currencies=usd", { next: { revalidate: 1800 } });
-      if (cryptoRes.ok) {
-        const cryptoData = await cryptoRes.json();
-        if (cryptoData?.bitcoin?.usd) rates.btcToUsd = cryptoData.bitcoin.usd;
-        if (cryptoData?.ethereum?.usd) rates.ethToUsd = cryptoData.ethereum.usd;
-        if (cryptoData?.['usd-coin']?.usd) rates.usdcToUsd = cryptoData['usd-coin'].usd;
-      }
-    } catch (e) {
-      console.error("Failed to fetch crypto rates:", e);
-    }
+/**
+ * Live rates from Frankfurter (USD→IDR) and CoinGecko (crypto→USD). Never
+ * throws: a failed source falls back to its last good answer, or to defaults,
+ * and the result is marked `estimated` so the UI can say so.
+ */
+export async function fetchExchangeRates(): Promise<ExchangeRates> {
+  const [fiat, crypto] = await Promise.allSettled([fetchFiat(), fetchCrypto()]);
 
-    rateCache = { rates, fetchedAt: Date.now() };
-  } catch (error) {
-    console.error("Exchange rate fetch error:", error);
-  }
+  if (fiat.status === "fulfilled") lastFiat = fiat.value;
+  else console.warn("[rates] fiat rates unavailable:", fiat.reason instanceof Error ? fiat.reason.message : fiat.reason);
+  if (crypto.status === "fulfilled") lastCrypto = crypto.value;
+  else console.warn("[rates] crypto rates unavailable:", crypto.reason instanceof Error ? crypto.reason.message : crypto.reason);
 
-  return rates;
+  return {
+    ...(lastFiat ?? DEFAULT_FIAT),
+    ...(lastCrypto ?? DEFAULT_CRYPTO),
+    estimated: fiat.status === "rejected" || crypto.status === "rejected",
+  };
 }
 
 export function convertToUsd(amount: number, currencyCode: string, rates: ExchangeRates): number {

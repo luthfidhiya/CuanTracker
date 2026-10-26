@@ -8,7 +8,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     Credentials({
       credentials: { password: {} },
       async authorize(credentials) {
-        if (credentials?.password === process.env.APP_PASSWORD) {
+        // Without a configured password nobody can sign in.
+        const expected = process.env.APP_PASSWORD;
+        if (expected && credentials?.password === expected) {
           return { id: "1", name: "Owner" };
         }
         return null;
