@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
-import { Logo } from "@/components/ui/logo";
+import { Logo, LogoIcon } from "@/components/ui/logo";
 import { loginAction } from "./actions";
 
 export default function LoginPage() {
@@ -12,10 +12,13 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-dvh items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-3xl">
-          <Logo />
-        </h1>
-        <p className="mb-8 mt-1 text-sm text-muted">Masukkan kata sandi untuk melanjutkan.</p>
+        <div className="mb-8 flex flex-col items-center text-center">
+          <LogoIcon className="mb-4 size-16" />
+          <h1>
+            <Logo preload className="h-9" />
+          </h1>
+          <p className="mt-3 text-sm text-muted">Masukkan kata sandi untuk melanjutkan.</p>
+        </div>
 
         <form action={formAction} className="space-y-4">
           <Field label="Kata sandi" htmlFor="password">

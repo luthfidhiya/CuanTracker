@@ -143,8 +143,8 @@ export function AppShell({
 
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-border px-3 py-5 lg:flex">
-        <Link href="/" className="mb-6 px-3 text-2xl">
-          <Logo />
+        <Link href="/" className="mb-6 px-3" aria-label="CuanTracker, ke Ringkasan">
+          <Logo className="h-7" />
         </Link>
         <div className="mb-4 px-1">{addTransaction}</div>
         <nav aria-label="Navigasi utama" className="flex flex-col gap-0.5">
@@ -173,8 +173,8 @@ export function AppShell({
       <div className="min-w-0 flex-1">
         {/* Mobile top bar */}
         <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-bg/90 px-4 backdrop-blur lg:hidden">
-          <Link href="/" className="text-xl">
-            <Logo />
+          <Link href="/" aria-label="CuanTracker, ke Ringkasan">
+            <Logo preload />
           </Link>
           <div className="flex items-center">
             <PrivacyToggle />

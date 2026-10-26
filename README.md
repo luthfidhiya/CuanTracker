@@ -1,4 +1,13 @@
-# CuanTracker 💰
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
+    <img src="docs/logo-light.png" alt="CuanTracker" width="420">
+  </picture>
+</p>
+
+<p align="center">Personal finance tracker on top of Google Sheets · Next.js 16 · installable PWA</p>
+
+---
 
 A personal finance app built with Next.js 16 that uses Google Sheets as its database. Track income, expenses, and transfers between your wallets, without setting up a database.
 
@@ -25,16 +34,19 @@ The tradeoff is that it is best suited for personal/small-scale use (not thousan
 
 | Feature                     | Description                                                                                      |
 | --------------------------- | ------------------------------------------------------------------------------------------------ |
-| **Overview**                | Total balance (IDR and USD), this month's income, expense and net, wallets, latest transactions  |
-| **Wallets**                 | Bank, e-wallet, cash and investment wallets with their own color and currency                   |
-| **Multi-currency**          | IDR, USD, USDC, ETH and BTC; totals and analytics are converted to IDR with live rates          |
+| **Overview**                | Total balance (IDR and USD), exchange rates, totals per currency, this month's income, expense and net compared with the same days last month, and spending/income per category |
+| **Wallets**                 | Wallet cards for bank, e-wallet, cash and investment accounts, each with its own color and currency, filterable by type |
+| **Multi-currency**          | IDR, USD, USDC, ETH and BTC with their logos; totals and analytics are converted to IDR with live rates (last known rates are reused when the rate services are down) |
 | **Transactions**            | Income, expense and transfers between wallets of the same currency, grouped by day with a daily net |
-| **Search and filter**       | Search by category or note, filter by type, browse month by month (the month is in the URL)     |
+| **Search and filter**       | Search by category, note, wallet or amount; filter by type, wallet and category; totals follow the filter; browse month by month (the month is in the URL) |
+| **Record again**            | Open a past transaction and record it again with the same details, editing date or note before saving |
 | **Wallet detail**           | Per-wallet history where transfers read as money in or out of that wallet                       |
-| **Categories**              | Income and expense categories with colors, opened from the settings menu                                 |
-| **Analytics**               | Monthly trend, spending by category and by wallet, saving rate, over any date range (max 24 months) |
+| **Categories**              | Income and expense categories with colors, opened from the settings menu                         |
+| **Analytics**               | Four tabs: cash flow (with comparison to the previous period and a daily or monthly trend), by category, by wallet, and net worth over time |
+| **Net worth**               | Total balance at the end of each month, worked back from today's balances                        |
 | **Privacy mode**            | Masks every amount and blurs charts; on by default so balances never flash on screen            |
-| **Installable app**         | PWA with a bottom tab bar, a global add button and swipe between tabs on phones                 |
+| **Installable app**         | PWA with its own icon, a bottom tab bar, a global add button and swipe between tabs on phones    |
+| **Login protection**        | Single password, compared in constant time; repeated wrong guesses are blocked for 15 minutes   |
 | **Formula-based balances**  | Wallet balances are `SUMPRODUCT` formulas in the sheet, so the spreadsheet stays correct when edited by hand |
 
 ---
@@ -53,7 +65,6 @@ The tradeoff is that it is best suited for personal/small-scale use (not thousan
 | **Tests**          | [Vitest](https://vitest.dev/)                                                     |
 | **Auth**           | [NextAuth.js v5](https://authjs.dev/) (Credentials provider, JWT session)         |
 | **Database**       | [Google Sheets API v4](https://developers.google.com/sheets/api) via `googleapis` |
-| **Date handling**  | [date-fns](https://date-fns.org/)                                                 |
 | **Language**       | TypeScript                                                                        |
 
 ---
@@ -205,7 +216,7 @@ npm test         # Unit tests for the data logic (no Google access needed)
 │   │   ├── page.tsx            # Overview
 │   │   ├── transactions/       # ?month=yyyy-MM
 │   │   ├── wallets/            # List and wallets/[id] detail
-│   │   ├── analytics/          # ?from=&to=
+│   │   ├── analytics/          # ?view=flow|category|wallet|networth&from=&to=
 │   │   ├── categories/         # Category management
 │   │   └── error.tsx           # Shown when Google Sheets can't be reached
 │   ├── actions/                # Server actions: auth check, validation, write lock, cache invalidation
@@ -214,19 +225,21 @@ npm test         # Unit tests for the data logic (no Google access needed)
 ├── components/
 │   ├── shell/                  # Sidebar, bottom tabs, settings menu, swipe navigation, exit confirmation
 │   ├── transactions/           # Form, grouped list, filters, add button
-│   ├── wallets/                # Wallet form, list rows, edit/delete actions
+│   ├── wallets/                # Wallet cards and form, type filter, currency totals, exchange rates
 │   ├── categories/             # Category manager
-│   ├── analytics/              # Trend chart and breakdown lists
-│   ├── ui/                     # Button, inputs, sheet, confirm dialog, amount, month nav, …
+│   ├── analytics/              # Tabs, range picker, trend and net worth charts, breakdown lists
+│   ├── ui/                     # Button, inputs, sheet, confirm dialog, amount, currency logos, logo, …
 │   └── privacy.ts              # Privacy mode (stored per device)
 ├── lib/
 │   ├── sheets/                 # Google Sheets client, layout (schema), row mappers, balance formula
 │   ├── data/                   # Cached reads ("use cache" + tags) and writes per entity
-│   ├── server/action.ts        # Shared wrapper for server actions
+│   ├── server/                 # Server action wrapper, login rate limiting
 │   ├── analytics.ts            # Totals and breakdowns (pure, tested)
 │   ├── validation.ts           # Zod schemas for all inputs
 │   ├── money.ts, format-date.ts# Formatting for id-ID
 │   └── exchange.ts             # Exchange rates via Frankfurter and CoinGecko
+├── public/                     # Logo and PWA icons (favicon and Apple icon live in app/)
+├── docs/                       # Logo variants for this README
 ├── auth.ts                     # NextAuth configuration (Credentials provider, JWT)
 └── proxy.ts                    # Redirects signed-out requests to /login
 ```
@@ -248,6 +261,8 @@ Google Sheets allows 60 read requests per minute. Reads are cached for a short t
    - `APP_PASSWORD`
    - `AUTH_SECRET`
 4. Deploy — Vercel handles the Next.js build automatically
+
+Use a long, random `APP_PASSWORD`. The failed-login counter lives in server memory, so on Vercel it is per instance and resets when an instance is recycled; it slows guessing down but a strong password is what keeps the data safe.
 
 ### Self-hosted
 
