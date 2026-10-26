@@ -18,7 +18,8 @@ export function TrendChart({ trend }: { trend: Trend }) {
 
   return (
     <PrivacyBlur className="h-64">
-      <ResponsiveContainer width="100%" height="100%">
+      {/* The server can't measure the container; a starting size keeps the SSR pass from warning. */}
+      <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 600, height: 256 }}>
         <ComposedChart data={trend.points} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barGap={1}>
           <CartesianGrid vertical={false} stroke="var(--color-border)" />
           <XAxis

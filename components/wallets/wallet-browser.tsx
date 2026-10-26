@@ -23,7 +23,7 @@ export function WalletBrowser({ wallets }: { wallets: WalletWithBalance[] }) {
   return (
     <>
       {types.length > 1 && (
-        <div className="-mx-4 mb-4 overflow-x-auto px-4 [scrollbar-width:none]">
+        <div className="-mx-4 mb-3 overflow-x-auto px-4 [scrollbar-width:none]">
           <Segmented
             label="Jenis dompet"
             value={active}
@@ -36,6 +36,9 @@ export function WalletBrowser({ wallets }: { wallets: WalletWithBalance[] }) {
           />
         </div>
       )}
+      <p className="mb-2 px-1 text-xs text-muted">
+        {active === ALL ? `${wallets.length} dompet` : `${shown.length} dari ${wallets.length} dompet`}
+      </p>
       <WalletCards wallets={shown} />
     </>
   );

@@ -13,7 +13,6 @@ export default async function WalletsPage() {
     <>
       <PageHeader
         title="Dompet"
-        description={wallets.length > 0 ? `${wallets.length} dompet` : undefined}
         actions={<AddWallet />}
       />
       {wallets.length === 0 ? (
